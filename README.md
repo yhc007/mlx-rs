@@ -10,6 +10,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **Optimizers**: SGD, Adam, AdamW, RMSprop with full configuration options
 - **Llama Model**: Complete implementation with GQA support for Llama 2/3 architectures
 - **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
+- **Learning Rate Schedulers**: StepLR, CosineAnnealing, WarmupCosine, OneCycleLR, and more
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
 - **GPU Acceleration**: Seamless execution on Apple Silicon GPUs
 
@@ -198,6 +199,37 @@ let arrays = serialize::load_npz("weights.npz").unwrap();
 serialize::save_npz("output.npz", &arrays).unwrap();
 ```
 
+### Learning Rate Schedulers
+
+```rust
+use mlx_rs::scheduler::{WarmupCosine, CosineAnnealingLR, StepLR, OneCycleLR, LRScheduler};
+use mlx_rs::nn::{Adam, Optimizer};
+
+// WarmupCosine - most common for transformers
+let mut scheduler = WarmupCosine::new(0.001, 1000, 10000)  // max_lr, warmup_steps, total_steps
+    .min_lr(1e-6);
+
+// CosineAnnealingLR
+let mut scheduler = CosineAnnealingLR::new(0.1, 1000).min_lr(1e-6);
+
+// StepLR - decay by gamma every step_size steps
+let mut scheduler = StepLR::new(0.1, 30, 0.1);  // initial_lr, step_size, gamma
+
+// OneCycleLR - super-convergence training
+let mut scheduler = OneCycleLR::new(0.1, 10000)
+    .pct_start(0.3)
+    .div_factor(25.0);
+
+// Training loop
+let mut optimizer = Adam::new(0.001);
+for step in 0..10000 {
+    // ... forward, backward ...
+    let lr = scheduler.step();
+    optimizer.set_learning_rate(lr);
+    let new_params = optimizer.step(&params, &grads).unwrap();
+}
+```
+
 ## Supported Operations
 
 ### Activations
@@ -222,6 +254,13 @@ serialize::save_npz("output.npz", &arrays).unwrap();
 - Rotary (RoPE, used in Llama)
 - Learned embeddings
 
+### Learning Rate Schedulers
+- StepLR, MultiStepLR, ExponentialLR
+- LinearLR, PolynomialLR, ConstantLR
+- CosineAnnealingLR, CosineAnnealingWarmRestarts
+- WarmupCosine, WarmupLinear (for transformers)
+- OneCycleLR (super-convergence)
+
 ### Linear Algebra
 - Matrix inverse, solve, Cholesky
 - QR decomposition, SVD
@@ -238,6 +277,7 @@ cargo run --example autodiff        # Gradients, VJP, JVP
 cargo run --example optimizer       # SGD, Adam, AdamW, RMSprop
 cargo run --example llama           # Llama model architecture
 cargo run --example serialization   # Load/save safetensors, npy, npz
+cargo run --example scheduler       # Learning rate schedulers
 ```
 
 ## License

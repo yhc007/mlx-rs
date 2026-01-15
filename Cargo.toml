@@ -46,3 +46,7 @@ path = "examples/llama.rs"
 [[example]]
 name = "serialization"
 path = "examples/serialization.rs"
+
+[[example]]
+name = "scheduler"
+path = "examples/scheduler.rs"

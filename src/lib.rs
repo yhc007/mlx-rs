@@ -46,6 +46,7 @@ pub mod linalg;
 pub mod nn;
 pub mod ops;
 pub mod random;
+pub mod scheduler;
 pub mod serialize;
 pub mod stream;
 pub mod transforms;
@@ -3243,5 +3244,221 @@ mod tests {
         assert_eq!(loaded.shape(), vec![2, 2]);
         let data = loaded.to_vec::<i32>().unwrap();
         assert_eq!(data, vec![10, 20, 30, 40]);
+    }
+
+    // ============================================================================
+    // Learning Rate Scheduler Tests
+    // ============================================================================
+
+    #[test]
+    fn test_step_lr() {
+        use scheduler::{StepLR, LRScheduler};
+
+        let mut sched = StepLR::new(0.1, 10, 0.1);
+
+        // First 10 steps should have lr = 0.1
+        for _ in 0..10 {
+            let lr = sched.step();
+            assert!((lr - 0.1).abs() < 1e-6);
+        }
+
+        // Next 10 steps should have lr = 0.01
+        for _ in 0..10 {
+            let lr = sched.step();
+            assert!((lr - 0.01).abs() < 1e-6);
+        }
+
+        // Next 10 steps should have lr = 0.001
+        let lr = sched.step();
+        assert!((lr - 0.001).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_exponential_lr() {
+        use scheduler::{ExponentialLR, LRScheduler};
+
+        let mut sched = ExponentialLR::new(1.0, 0.9);
+
+        let lr0 = sched.step();
+        assert!((lr0 - 1.0).abs() < 1e-6);
+
+        let lr1 = sched.step();
+        assert!((lr1 - 0.9).abs() < 1e-6);
+
+        let lr2 = sched.step();
+        assert!((lr2 - 0.81).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_linear_lr() {
+        use scheduler::{LinearLR, LRScheduler};
+
+        let mut sched = LinearLR::new(1.0, 0.0, 100);
+
+        let lr0 = sched.step();
+        assert!((lr0 - 1.0).abs() < 1e-6);
+
+        // At step 50, should be 0.5
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr50 = sched.step();
+        assert!((lr50 - 0.5).abs() < 1e-6);
+
+        // At step 100, should be 0.0
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr100 = sched.step();
+        assert!((lr100 - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_annealing_lr() {
+        use scheduler::{CosineAnnealingLR, LRScheduler};
+
+        let mut sched = CosineAnnealingLR::new(1.0, 100).min_lr(0.0);
+
+        // At start, lr should be max_lr
+        let lr0 = sched.step();
+        assert!((lr0 - 1.0).abs() < 1e-6);
+
+        // At middle (step 50), lr should be ~0.5
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr50 = sched.step();
+        assert!((lr50 - 0.5).abs() < 0.05);
+
+        // At end, lr should be min_lr
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr100 = sched.get_lr();
+        assert!(lr100 < 0.05);
+    }
+
+    #[test]
+    fn test_warmup_cosine() {
+        use scheduler::{WarmupCosine, LRScheduler};
+
+        let mut sched = WarmupCosine::new(1.0, 100, 1000).min_lr(0.0);
+
+        // At start, lr should be 0 (warmup starts from min_lr)
+        let lr0 = sched.step();
+        assert!(lr0 < 0.02);
+
+        // At step 50, should be ~0.5 (middle of warmup)
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr50 = sched.step();
+        assert!((lr50 - 0.5).abs() < 0.05);
+
+        // At step 100, should be 1.0 (end of warmup)
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr100 = sched.step();
+        assert!((lr100 - 1.0).abs() < 0.02);
+
+        // After warmup, should decay
+        for _ in 0..400 {
+            sched.step();
+        }
+        let lr500 = sched.get_lr();
+        assert!(lr500 < 1.0 && lr500 > 0.0);
+    }
+
+    #[test]
+    fn test_one_cycle_lr() {
+        use scheduler::{OneCycleLR, LRScheduler};
+
+        let mut sched = OneCycleLR::new(0.1, 100)
+            .pct_start(0.3)
+            .div_factor(10.0);
+
+        // Initial lr should be max_lr / div_factor = 0.01
+        let lr0 = sched.step();
+        assert!((lr0 - 0.01).abs() < 1e-4);
+
+        // At step 30 (end of warmup), should be near max_lr
+        for _ in 0..29 {
+            sched.step();
+        }
+        let lr30 = sched.step();
+        assert!((lr30 - 0.1).abs() < 0.02);
+    }
+
+    #[test]
+    fn test_scheduler_reset() {
+        use scheduler::{StepLR, LRScheduler};
+
+        let mut sched = StepLR::new(0.1, 10, 0.1);
+
+        // Advance 15 steps
+        for _ in 0..15 {
+            sched.step();
+        }
+        assert_eq!(sched.current_step(), 15);
+
+        // Reset
+        sched.reset();
+        assert_eq!(sched.current_step(), 0);
+        assert!((sched.get_lr() - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_multi_step_lr() {
+        use scheduler::{MultiStepLR, LRScheduler};
+
+        let mut sched = MultiStepLR::new(0.1, vec![30, 60, 90], 0.1);
+
+        // Before first milestone
+        for _ in 0..30 {
+            let lr = sched.step();
+            assert!((lr - 0.1).abs() < 1e-6);
+        }
+
+        // After first milestone
+        let lr = sched.step();
+        assert!((lr - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_polynomial_lr() {
+        use scheduler::{PolynomialLR, LRScheduler};
+
+        // Linear decay (power=1)
+        let mut sched = PolynomialLR::new(1.0, 100).final_lr(0.0).power(1.0);
+
+        let lr0 = sched.step();
+        assert!((lr0 - 1.0).abs() < 1e-6);
+
+        for _ in 0..49 {
+            sched.step();
+        }
+        let lr50 = sched.step();
+        assert!((lr50 - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_warm_restarts() {
+        use scheduler::{CosineAnnealingWarmRestarts, LRScheduler};
+
+        let mut sched = CosineAnnealingWarmRestarts::new(1.0, 10).min_lr(0.0);
+
+        // At start of first cycle
+        let lr0 = sched.step();
+        assert!((lr0 - 1.0).abs() < 1e-6);
+
+        // Complete first cycle (10 steps)
+        for _ in 0..9 {
+            sched.step();
+        }
+
+        // Start of second cycle - should restart at max_lr
+        let lr10 = sched.step();
+        assert!((lr10 - 1.0).abs() < 1e-6);
     }
 }
