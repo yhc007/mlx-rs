@@ -72,6 +72,14 @@ pub enum Error {
     /// Internal MLX error
     #[error("Internal MLX error: {0}")]
     Internal(String),
+
+    /// IO error
+    #[error("IO error: {0}")]
+    Io(String),
+
+    /// Serialization error
+    #[error("Serialization error: {0}")]
+    Serialization(String),
 }
 
 impl Error {

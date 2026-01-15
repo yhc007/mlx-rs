@@ -46,6 +46,7 @@ pub mod linalg;
 pub mod nn;
 pub mod ops;
 pub mod random;
+pub mod serialize;
 pub mod stream;
 pub mod transforms;
 
@@ -3075,5 +3076,172 @@ mod tests {
         let val = f.to_vec::<f32>().unwrap()[0];
         // Should be n * n * 2.0 = 2,000,000
         assert!((val - 2_000_000.0).abs() < 100.0);
+    }
+
+    // ============================================================================
+    // Serialization Tests
+    // ============================================================================
+
+    #[test]
+    fn test_safetensors_roundtrip() {
+        use std::collections::HashMap;
+
+        // Create test tensors
+        let mut tensors = HashMap::new();
+        tensors.insert(
+            "weight".to_string(),
+            Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0], &[2, 2]).unwrap(),
+        );
+        tensors.insert(
+            "bias".to_string(),
+            Array::from_slice(&[0.1f32, 0.2], &[2]).unwrap(),
+        );
+
+        // Save to bytes
+        let bytes = serialize::save_safetensors_to_bytes(&tensors).unwrap();
+
+        // Load from bytes
+        let loaded = serialize::load_safetensors_from_bytes(&bytes).unwrap();
+
+        // Verify
+        assert_eq!(loaded.len(), 2);
+
+        let weight = loaded.get("weight").unwrap();
+        weight.eval();
+        assert_eq!(weight.shape(), vec![2, 2]);
+        let weight_data = weight.to_vec::<f32>().unwrap();
+        assert!((weight_data[0] - 1.0).abs() < 1e-5);
+        assert!((weight_data[3] - 4.0).abs() < 1e-5);
+
+        let bias = loaded.get("bias").unwrap();
+        bias.eval();
+        assert_eq!(bias.shape(), vec![2]);
+    }
+
+    #[test]
+    fn test_safetensors_file_roundtrip() {
+        use std::collections::HashMap;
+
+        let path = std::env::temp_dir().join("test_mlx_rs.safetensors");
+
+        // Create test tensor
+        let mut tensors = HashMap::new();
+        tensors.insert(
+            "data".to_string(),
+            Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap(),
+        );
+
+        // Save to file
+        serialize::save_safetensors(&path, &tensors).unwrap();
+
+        // Load from file
+        let loaded = serialize::load_safetensors(&path).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&path);
+
+        // Verify
+        let data = loaded.get("data").unwrap();
+        data.eval();
+        assert_eq!(data.shape(), vec![2, 3]);
+    }
+
+    #[test]
+    fn test_npy_roundtrip() {
+        let path = std::env::temp_dir().join("test_mlx_rs.npy");
+
+        // Create test array
+        let array = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Save to file
+        serialize::save_npy(&path, &array).unwrap();
+
+        // Load from file
+        let loaded = serialize::load_npy(&path).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&path);
+
+        // Verify
+        loaded.eval();
+        assert_eq!(loaded.shape(), vec![2, 3]);
+        let data = loaded.to_vec::<f32>().unwrap();
+        assert!((data[0] - 1.0).abs() < 1e-5);
+        assert!((data[5] - 6.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_npz_roundtrip() {
+        use std::collections::HashMap;
+
+        let path = std::env::temp_dir().join("test_mlx_rs.npz");
+
+        // Create test arrays
+        let mut arrays = HashMap::new();
+        arrays.insert(
+            "weights".to_string(),
+            Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0], &[2, 2]).unwrap(),
+        );
+        arrays.insert(
+            "bias".to_string(),
+            Array::from_slice(&[0.5f32, 0.5], &[2]).unwrap(),
+        );
+
+        // Save to file
+        serialize::save_npz(&path, &arrays).unwrap();
+
+        // Load from file
+        let loaded = serialize::load_npz(&path).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&path);
+
+        // Verify
+        assert_eq!(loaded.len(), 2);
+
+        let weights = loaded.get("weights").unwrap();
+        weights.eval();
+        assert_eq!(weights.shape(), vec![2, 2]);
+
+        let bias = loaded.get("bias").unwrap();
+        bias.eval();
+        assert_eq!(bias.shape(), vec![2]);
+    }
+
+    #[test]
+    fn test_safetensors_int_types() {
+        use std::collections::HashMap;
+
+        let mut tensors = HashMap::new();
+        tensors.insert(
+            "int32".to_string(),
+            Array::from_slice(&[1i32, 2, 3, 4], &[4]).unwrap(),
+        );
+
+        let bytes = serialize::save_safetensors_to_bytes(&tensors).unwrap();
+        let loaded = serialize::load_safetensors_from_bytes(&bytes).unwrap();
+
+        let arr = loaded.get("int32").unwrap();
+        arr.eval();
+        assert_eq!(arr.shape(), vec![4]);
+        let data = arr.to_vec::<i32>().unwrap();
+        assert_eq!(data, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_npy_int_types() {
+        let path = std::env::temp_dir().join("test_mlx_rs_int.npy");
+
+        let array = Array::from_slice(&[10i32, 20, 30, 40], &[2, 2]).unwrap();
+
+        serialize::save_npy(&path, &array).unwrap();
+        let loaded = serialize::load_npy(&path).unwrap();
+
+        let _ = std::fs::remove_file(&path);
+
+        loaded.eval();
+        assert_eq!(loaded.shape(), vec![2, 2]);
+        let data = loaded.to_vec::<i32>().unwrap();
+        assert_eq!(data, vec![10, 20, 30, 40]);
     }
 }

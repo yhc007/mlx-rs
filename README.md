@@ -9,6 +9,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **Neural Network Layers**: Activations, normalization, attention, convolution, pooling, dropout
 - **Optimizers**: SGD, Adam, AdamW, RMSprop with full configuration options
 - **Llama Model**: Complete implementation with GQA support for Llama 2/3 architectures
+- **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
 - **GPU Acceleration**: Seamless execution on Apple Silicon GPUs
 
@@ -174,6 +175,29 @@ let logits = model.forward(&input_ids, &weights).unwrap();
 let output_ids = model.generate(&input_ids, &weights, 100, 0.8).unwrap();
 ```
 
+### Serialization
+
+```rust
+use mlx_rs::serialize;
+use std::collections::HashMap;
+
+// Load weights from safetensors (HuggingFace format)
+let weights = serialize::load_safetensors("model.safetensors").unwrap();
+
+// Save weights to safetensors
+let mut tensors = HashMap::new();
+tensors.insert("weight".to_string(), array);
+serialize::save_safetensors("output.safetensors", &tensors).unwrap();
+
+// NumPy format for Python interop
+let array = serialize::load_npy("weights.npy").unwrap();
+serialize::save_npy("output.npy", &array).unwrap();
+
+// NPZ (multiple arrays)
+let arrays = serialize::load_npz("weights.npz").unwrap();
+serialize::save_npz("output.npz", &arrays).unwrap();
+```
+
 ## Supported Operations
 
 ### Activations
@@ -213,6 +237,7 @@ cargo run --example neural_network  # NN layers, activations, attention
 cargo run --example autodiff        # Gradients, VJP, JVP
 cargo run --example optimizer       # SGD, Adam, AdamW, RMSprop
 cargo run --example llama           # Llama model architecture
+cargo run --example serialization   # Load/save safetensors, npy, npz
 ```
 
 ## License

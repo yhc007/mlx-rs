@@ -10,6 +10,10 @@ mlx-sys = { workspace = true }
 thiserror = { workspace = true }
 num-traits = { workspace = true }
 rand = { workspace = true }
+safetensors = { workspace = true }
+byteorder = { workspace = true }
+memmap2 = { workspace = true }
+zip = { workspace = true }
 
 [dev-dependencies]
 approx = "0.5"
@@ -38,3 +42,7 @@ path = "examples/optimizer.rs"
 [[example]]
 name = "llama"
 path = "examples/llama.rs"
+
+[[example]]
+name = "serialization"
+path = "examples/serialization.rs"
