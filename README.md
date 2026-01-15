@@ -13,6 +13,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **Vision Transformer (ViT)**: Image classification with patch-based attention
 - **Whisper Model**: Speech recognition with encoder-decoder transformer
 - **GPT-2 Model**: Decoder-only transformer for text generation
+- **CLIP Model**: Multimodal vision-language model for image-text matching
 - **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
 - **Learning Rate Schedulers**: StepLR, CosineAnnealing, WarmupCosine, OneCycleLR, and more
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
@@ -290,6 +291,30 @@ let logits = model.forward(&input_ids, &weights).unwrap();
 let output_ids = model.generate(&input_ids, &weights, 50, 0.8).unwrap();
 ```
 
+### CLIP Model
+
+```rust
+use mlx_rs::nn::{CLIPConfig, CLIPModel, CLIPWeights};
+
+// Use preset configuration
+let config = CLIPConfig::clip_vit_base_patch32();
+
+// Create model
+let model = CLIPModel::new(config);
+
+// Encode images (batch, height, width, channels)
+let image_embeds = model.encode_image(&images, &weights).unwrap();
+
+// Encode text
+let text_embeds = model.encode_text(&tokens, &weights).unwrap();
+
+// Compute image-text similarity
+let logits = model.forward(&images, &tokens, &weights).unwrap();
+
+// Zero-shot classification
+let probs = model.classify(&images, &class_embeds, &weights).unwrap();
+```
+
 ### Serialization
 
 ```rust
@@ -394,6 +419,7 @@ cargo run --example bert            # BERT model for embeddings
 cargo run --example vit             # Vision Transformer for images
 cargo run --example whisper         # Whisper speech recognition
 cargo run --example gpt2            # GPT-2 text generation
+cargo run --example clip            # CLIP image-text matching
 cargo run --example serialization   # Load/save safetensors, npy, npz
 cargo run --example scheduler       # Learning rate schedulers
 ```

@@ -8298,3 +8298,1048 @@ impl GPT2Model {
         &self.config
     }
 }
+
+// =============================================================================
+// CLIP (Contrastive Language-Image Pre-training) Model
+// =============================================================================
+
+/// Configuration for the CLIP vision encoder.
+#[derive(Debug, Clone)]
+pub struct CLIPVisionConfig {
+    /// Image size (height and width).
+    pub image_size: i32,
+    /// Patch size for patch embedding.
+    pub patch_size: i32,
+    /// Hidden size of the transformer.
+    pub hidden_size: i32,
+    /// Number of transformer layers.
+    pub num_hidden_layers: i32,
+    /// Number of attention heads.
+    pub num_attention_heads: i32,
+    /// Intermediate size in MLP (typically 4x hidden_size).
+    pub intermediate_size: i32,
+    /// Layer normalization epsilon.
+    pub layer_norm_eps: f32,
+    /// Dropout probability.
+    pub dropout: f32,
+}
+
+impl Default for CLIPVisionConfig {
+    fn default() -> Self {
+        Self {
+            image_size: 224,
+            patch_size: 32,
+            hidden_size: 768,
+            num_hidden_layers: 12,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+}
+
+impl CLIPVisionConfig {
+    /// Create a new vision config with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set image size.
+    pub fn image_size(mut self, size: i32) -> Self {
+        self.image_size = size;
+        self
+    }
+
+    /// Set patch size.
+    pub fn patch_size(mut self, size: i32) -> Self {
+        self.patch_size = size;
+        self
+    }
+
+    /// Set hidden size.
+    pub fn hidden_size(mut self, size: i32) -> Self {
+        self.hidden_size = size;
+        self
+    }
+
+    /// Set number of hidden layers.
+    pub fn num_hidden_layers(mut self, n: i32) -> Self {
+        self.num_hidden_layers = n;
+        self
+    }
+
+    /// Set number of attention heads.
+    pub fn num_attention_heads(mut self, n: i32) -> Self {
+        self.num_attention_heads = n;
+        self
+    }
+
+    /// Set intermediate size.
+    pub fn intermediate_size(mut self, size: i32) -> Self {
+        self.intermediate_size = size;
+        self
+    }
+
+    /// Get the number of patches.
+    pub fn num_patches(&self) -> i32 {
+        (self.image_size / self.patch_size) * (self.image_size / self.patch_size)
+    }
+
+    /// Get head dimension.
+    pub fn head_dim(&self) -> i32 {
+        self.hidden_size / self.num_attention_heads
+    }
+
+    /// CLIP ViT-B/32 configuration.
+    pub fn vit_base_patch32() -> Self {
+        Self {
+            image_size: 224,
+            patch_size: 32,
+            hidden_size: 768,
+            num_hidden_layers: 12,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+
+    /// CLIP ViT-B/16 configuration.
+    pub fn vit_base_patch16() -> Self {
+        Self {
+            image_size: 224,
+            patch_size: 16,
+            hidden_size: 768,
+            num_hidden_layers: 12,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+
+    /// CLIP ViT-L/14 configuration.
+    pub fn vit_large_patch14() -> Self {
+        Self {
+            image_size: 224,
+            patch_size: 14,
+            hidden_size: 1024,
+            num_hidden_layers: 24,
+            num_attention_heads: 16,
+            intermediate_size: 4096,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+
+    /// CLIP ViT-L/14@336px configuration.
+    pub fn vit_large_patch14_336() -> Self {
+        Self {
+            image_size: 336,
+            patch_size: 14,
+            hidden_size: 1024,
+            num_hidden_layers: 24,
+            num_attention_heads: 16,
+            intermediate_size: 4096,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+}
+
+/// Configuration for the CLIP text encoder.
+#[derive(Debug, Clone)]
+pub struct CLIPTextConfig {
+    /// Vocabulary size.
+    pub vocab_size: i32,
+    /// Maximum sequence length.
+    pub max_position_embeddings: i32,
+    /// Hidden size of the transformer.
+    pub hidden_size: i32,
+    /// Number of transformer layers.
+    pub num_hidden_layers: i32,
+    /// Number of attention heads.
+    pub num_attention_heads: i32,
+    /// Intermediate size in MLP.
+    pub intermediate_size: i32,
+    /// Layer normalization epsilon.
+    pub layer_norm_eps: f32,
+    /// Dropout probability.
+    pub dropout: f32,
+}
+
+impl Default for CLIPTextConfig {
+    fn default() -> Self {
+        Self {
+            vocab_size: 49408,
+            max_position_embeddings: 77,
+            hidden_size: 512,
+            num_hidden_layers: 12,
+            num_attention_heads: 8,
+            intermediate_size: 2048,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+}
+
+impl CLIPTextConfig {
+    /// Create a new text config with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set vocabulary size.
+    pub fn vocab_size(mut self, size: i32) -> Self {
+        self.vocab_size = size;
+        self
+    }
+
+    /// Set maximum position embeddings.
+    pub fn max_position_embeddings(mut self, n: i32) -> Self {
+        self.max_position_embeddings = n;
+        self
+    }
+
+    /// Set hidden size.
+    pub fn hidden_size(mut self, size: i32) -> Self {
+        self.hidden_size = size;
+        self
+    }
+
+    /// Set number of hidden layers.
+    pub fn num_hidden_layers(mut self, n: i32) -> Self {
+        self.num_hidden_layers = n;
+        self
+    }
+
+    /// Set number of attention heads.
+    pub fn num_attention_heads(mut self, n: i32) -> Self {
+        self.num_attention_heads = n;
+        self
+    }
+
+    /// Set intermediate size.
+    pub fn intermediate_size(mut self, size: i32) -> Self {
+        self.intermediate_size = size;
+        self
+    }
+
+    /// Get head dimension.
+    pub fn head_dim(&self) -> i32 {
+        self.hidden_size / self.num_attention_heads
+    }
+
+    /// CLIP text encoder base configuration.
+    pub fn clip_base() -> Self {
+        Self {
+            vocab_size: 49408,
+            max_position_embeddings: 77,
+            hidden_size: 512,
+            num_hidden_layers: 12,
+            num_attention_heads: 8,
+            intermediate_size: 2048,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+
+    /// CLIP text encoder large configuration.
+    pub fn clip_large() -> Self {
+        Self {
+            vocab_size: 49408,
+            max_position_embeddings: 77,
+            hidden_size: 768,
+            num_hidden_layers: 12,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+            layer_norm_eps: 1e-5,
+            dropout: 0.0,
+        }
+    }
+}
+
+/// Combined CLIP configuration.
+#[derive(Debug, Clone)]
+pub struct CLIPConfig {
+    /// Vision encoder configuration.
+    pub vision: CLIPVisionConfig,
+    /// Text encoder configuration.
+    pub text: CLIPTextConfig,
+    /// Projection dimension for both modalities.
+    pub projection_dim: i32,
+    /// Learnable temperature parameter (logit scale).
+    pub logit_scale_init: f32,
+}
+
+impl Default for CLIPConfig {
+    fn default() -> Self {
+        Self {
+            vision: CLIPVisionConfig::vit_base_patch32(),
+            text: CLIPTextConfig::clip_base(),
+            projection_dim: 512,
+            logit_scale_init: 2.6592, // ln(1/0.07)
+        }
+    }
+}
+
+impl CLIPConfig {
+    /// Create a new CLIP config with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set vision config.
+    pub fn vision(mut self, config: CLIPVisionConfig) -> Self {
+        self.vision = config;
+        self
+    }
+
+    /// Set text config.
+    pub fn text(mut self, config: CLIPTextConfig) -> Self {
+        self.text = config;
+        self
+    }
+
+    /// Set projection dimension.
+    pub fn projection_dim(mut self, dim: i32) -> Self {
+        self.projection_dim = dim;
+        self
+    }
+
+    /// CLIP ViT-B/32 configuration (OpenAI default).
+    pub fn clip_vit_base_patch32() -> Self {
+        Self {
+            vision: CLIPVisionConfig::vit_base_patch32(),
+            text: CLIPTextConfig::clip_base(),
+            projection_dim: 512,
+            logit_scale_init: 2.6592,
+        }
+    }
+
+    /// CLIP ViT-B/16 configuration.
+    pub fn clip_vit_base_patch16() -> Self {
+        Self {
+            vision: CLIPVisionConfig::vit_base_patch16(),
+            text: CLIPTextConfig::clip_base(),
+            projection_dim: 512,
+            logit_scale_init: 2.6592,
+        }
+    }
+
+    /// CLIP ViT-L/14 configuration.
+    pub fn clip_vit_large_patch14() -> Self {
+        Self {
+            vision: CLIPVisionConfig::vit_large_patch14(),
+            text: CLIPTextConfig::clip_large(),
+            projection_dim: 768,
+            logit_scale_init: 2.6592,
+        }
+    }
+
+    /// CLIP ViT-L/14@336px configuration.
+    pub fn clip_vit_large_patch14_336() -> Self {
+        Self {
+            vision: CLIPVisionConfig::vit_large_patch14_336(),
+            text: CLIPTextConfig::clip_large(),
+            projection_dim: 768,
+            logit_scale_init: 2.6592,
+        }
+    }
+}
+
+/// Weights for a single CLIP vision transformer layer.
+#[derive(Debug, Clone)]
+pub struct CLIPVisionLayerWeights {
+    /// Pre-attention layer norm weight.
+    pub ln1_weight: Array,
+    /// Pre-attention layer norm bias.
+    pub ln1_bias: Array,
+    /// Query projection weight.
+    pub q_proj_weight: Array,
+    /// Query projection bias.
+    pub q_proj_bias: Array,
+    /// Key projection weight.
+    pub k_proj_weight: Array,
+    /// Key projection bias.
+    pub k_proj_bias: Array,
+    /// Value projection weight.
+    pub v_proj_weight: Array,
+    /// Value projection bias.
+    pub v_proj_bias: Array,
+    /// Output projection weight.
+    pub out_proj_weight: Array,
+    /// Output projection bias.
+    pub out_proj_bias: Array,
+    /// Pre-MLP layer norm weight.
+    pub ln2_weight: Array,
+    /// Pre-MLP layer norm bias.
+    pub ln2_bias: Array,
+    /// MLP fc1 weight.
+    pub mlp_fc1_weight: Array,
+    /// MLP fc1 bias.
+    pub mlp_fc1_bias: Array,
+    /// MLP fc2 weight.
+    pub mlp_fc2_weight: Array,
+    /// MLP fc2 bias.
+    pub mlp_fc2_bias: Array,
+}
+
+/// Weights for the CLIP vision encoder.
+#[derive(Debug, Clone)]
+pub struct CLIPVisionWeights {
+    /// Patch embedding weight (conv kernel).
+    pub patch_embed_weight: Array,
+    /// Patch embedding bias.
+    pub patch_embed_bias: Array,
+    /// Class token embedding.
+    pub class_embedding: Array,
+    /// Position embeddings.
+    pub position_embedding: Array,
+    /// Pre-transformer layer norm weight.
+    pub pre_ln_weight: Array,
+    /// Pre-transformer layer norm bias.
+    pub pre_ln_bias: Array,
+    /// Transformer layer weights.
+    pub layers: Vec<CLIPVisionLayerWeights>,
+    /// Post-transformer layer norm weight.
+    pub post_ln_weight: Array,
+    /// Post-transformer layer norm bias.
+    pub post_ln_bias: Array,
+    /// Visual projection weight (to shared embedding space).
+    pub visual_proj_weight: Array,
+}
+
+impl CLIPVisionWeights {
+    /// Create random weights for testing.
+    pub fn random(config: &CLIPVisionConfig) -> Result<Self> {
+        let hidden = config.hidden_size;
+        let intermediate = config.intermediate_size;
+        let num_patches = config.num_patches();
+        let patch_dim = config.patch_size * config.patch_size * 3; // RGB
+
+        let random_array = |shape: &[i32]| -> Result<Array> {
+            let size: i32 = shape.iter().product();
+            let data: Vec<f32> = (0..size)
+                .map(|i| ((i as f32 * 0.1).sin() * 0.02))
+                .collect();
+            Array::from_slice(&data, shape)
+        };
+
+        let mut layers = Vec::new();
+        for _ in 0..config.num_hidden_layers {
+            layers.push(CLIPVisionLayerWeights {
+                ln1_weight: Array::ones::<f32>(&[hidden])?,
+                ln1_bias: Array::zeros::<f32>(&[hidden])?,
+                q_proj_weight: random_array(&[hidden, hidden])?,
+                q_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                k_proj_weight: random_array(&[hidden, hidden])?,
+                k_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                v_proj_weight: random_array(&[hidden, hidden])?,
+                v_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                out_proj_weight: random_array(&[hidden, hidden])?,
+                out_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                ln2_weight: Array::ones::<f32>(&[hidden])?,
+                ln2_bias: Array::zeros::<f32>(&[hidden])?,
+                mlp_fc1_weight: random_array(&[hidden, intermediate])?,
+                mlp_fc1_bias: Array::zeros::<f32>(&[intermediate])?,
+                mlp_fc2_weight: random_array(&[intermediate, hidden])?,
+                mlp_fc2_bias: Array::zeros::<f32>(&[hidden])?,
+            });
+        }
+
+        Ok(Self {
+            patch_embed_weight: random_array(&[patch_dim, hidden])?,
+            patch_embed_bias: Array::zeros::<f32>(&[hidden])?,
+            class_embedding: random_array(&[hidden])?,
+            position_embedding: random_array(&[num_patches + 1, hidden])?,
+            pre_ln_weight: Array::ones::<f32>(&[hidden])?,
+            pre_ln_bias: Array::zeros::<f32>(&[hidden])?,
+            layers,
+            post_ln_weight: Array::ones::<f32>(&[hidden])?,
+            post_ln_bias: Array::zeros::<f32>(&[hidden])?,
+            visual_proj_weight: random_array(&[hidden, hidden])?, // Will be resized for projection_dim
+        })
+    }
+}
+
+/// Weights for a single CLIP text transformer layer.
+#[derive(Debug, Clone)]
+pub struct CLIPTextLayerWeights {
+    /// Pre-attention layer norm weight.
+    pub ln1_weight: Array,
+    /// Pre-attention layer norm bias.
+    pub ln1_bias: Array,
+    /// Query projection weight.
+    pub q_proj_weight: Array,
+    /// Query projection bias.
+    pub q_proj_bias: Array,
+    /// Key projection weight.
+    pub k_proj_weight: Array,
+    /// Key projection bias.
+    pub k_proj_bias: Array,
+    /// Value projection weight.
+    pub v_proj_weight: Array,
+    /// Value projection bias.
+    pub v_proj_bias: Array,
+    /// Output projection weight.
+    pub out_proj_weight: Array,
+    /// Output projection bias.
+    pub out_proj_bias: Array,
+    /// Pre-MLP layer norm weight.
+    pub ln2_weight: Array,
+    /// Pre-MLP layer norm bias.
+    pub ln2_bias: Array,
+    /// MLP fc1 weight.
+    pub mlp_fc1_weight: Array,
+    /// MLP fc1 bias.
+    pub mlp_fc1_bias: Array,
+    /// MLP fc2 weight.
+    pub mlp_fc2_weight: Array,
+    /// MLP fc2 bias.
+    pub mlp_fc2_bias: Array,
+}
+
+/// Weights for the CLIP text encoder.
+#[derive(Debug, Clone)]
+pub struct CLIPTextWeights {
+    /// Token embedding weight.
+    pub token_embedding: Array,
+    /// Position embedding weight.
+    pub position_embedding: Array,
+    /// Transformer layer weights.
+    pub layers: Vec<CLIPTextLayerWeights>,
+    /// Final layer norm weight.
+    pub ln_final_weight: Array,
+    /// Final layer norm bias.
+    pub ln_final_bias: Array,
+    /// Text projection weight (to shared embedding space).
+    pub text_proj_weight: Array,
+}
+
+impl CLIPTextWeights {
+    /// Create random weights for testing.
+    pub fn random(config: &CLIPTextConfig) -> Result<Self> {
+        let hidden = config.hidden_size;
+        let intermediate = config.intermediate_size;
+        let vocab = config.vocab_size;
+        let max_pos = config.max_position_embeddings;
+
+        let random_array = |shape: &[i32]| -> Result<Array> {
+            let size: i32 = shape.iter().product();
+            let data: Vec<f32> = (0..size)
+                .map(|i| ((i as f32 * 0.1).sin() * 0.02))
+                .collect();
+            Array::from_slice(&data, shape)
+        };
+
+        let mut layers = Vec::new();
+        for _ in 0..config.num_hidden_layers {
+            layers.push(CLIPTextLayerWeights {
+                ln1_weight: Array::ones::<f32>(&[hidden])?,
+                ln1_bias: Array::zeros::<f32>(&[hidden])?,
+                q_proj_weight: random_array(&[hidden, hidden])?,
+                q_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                k_proj_weight: random_array(&[hidden, hidden])?,
+                k_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                v_proj_weight: random_array(&[hidden, hidden])?,
+                v_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                out_proj_weight: random_array(&[hidden, hidden])?,
+                out_proj_bias: Array::zeros::<f32>(&[hidden])?,
+                ln2_weight: Array::ones::<f32>(&[hidden])?,
+                ln2_bias: Array::zeros::<f32>(&[hidden])?,
+                mlp_fc1_weight: random_array(&[hidden, intermediate])?,
+                mlp_fc1_bias: Array::zeros::<f32>(&[intermediate])?,
+                mlp_fc2_weight: random_array(&[intermediate, hidden])?,
+                mlp_fc2_bias: Array::zeros::<f32>(&[hidden])?,
+            });
+        }
+
+        Ok(Self {
+            token_embedding: random_array(&[vocab, hidden])?,
+            position_embedding: random_array(&[max_pos, hidden])?,
+            layers,
+            ln_final_weight: Array::ones::<f32>(&[hidden])?,
+            ln_final_bias: Array::zeros::<f32>(&[hidden])?,
+            text_proj_weight: random_array(&[hidden, hidden])?, // Will be resized for projection_dim
+        })
+    }
+}
+
+/// Combined weights for the CLIP model.
+#[derive(Debug, Clone)]
+pub struct CLIPWeights {
+    /// Vision encoder weights.
+    pub vision: CLIPVisionWeights,
+    /// Text encoder weights.
+    pub text: CLIPTextWeights,
+    /// Learnable temperature (logit scale).
+    pub logit_scale: Array,
+}
+
+impl CLIPWeights {
+    /// Create random weights for testing.
+    pub fn random(config: &CLIPConfig) -> Result<Self> {
+        let mut vision = CLIPVisionWeights::random(&config.vision)?;
+        let mut text = CLIPTextWeights::random(&config.text)?;
+
+        // Resize projection weights to match projection_dim
+        let proj_dim = config.projection_dim;
+        let vis_hidden = config.vision.hidden_size;
+        let txt_hidden = config.text.hidden_size;
+
+        let random_array = |shape: &[i32]| -> Result<Array> {
+            let size: i32 = shape.iter().product();
+            let data: Vec<f32> = (0..size)
+                .map(|i| ((i as f32 * 0.1).sin() * 0.02))
+                .collect();
+            Array::from_slice(&data, shape)
+        };
+
+        vision.visual_proj_weight = random_array(&[vis_hidden, proj_dim])?;
+        text.text_proj_weight = random_array(&[txt_hidden, proj_dim])?;
+
+        Ok(Self {
+            vision,
+            text,
+            logit_scale: Array::from_float(config.logit_scale_init),
+        })
+    }
+}
+
+/// CLIP Vision Encoder.
+///
+/// Encodes images into embeddings using a Vision Transformer architecture.
+#[derive(Debug, Clone)]
+pub struct CLIPVisionEncoder {
+    config: CLIPVisionConfig,
+}
+
+impl CLIPVisionEncoder {
+    /// Create a new CLIP vision encoder.
+    pub fn new(config: CLIPVisionConfig) -> Self {
+        Self { config }
+    }
+
+    /// Forward pass through the vision encoder.
+    ///
+    /// # Arguments
+    /// * `images` - Input images with shape (batch, height, width, channels) in NHWC format.
+    /// * `weights` - Vision encoder weights.
+    ///
+    /// # Returns
+    /// Image embeddings with shape (batch, hidden_size).
+    pub fn forward(&self, images: &Array, weights: &CLIPVisionWeights) -> Result<Array> {
+        let shape = images.shape();
+        if shape.len() != 4 {
+            return Err(Error::InvalidShape("Expected 4D images (batch, H, W, C)".into()));
+        }
+        let batch_size = shape[0];
+        let height = shape[1];
+        let width = shape[2];
+
+        let patch_size = self.config.patch_size;
+        let hidden_size = self.config.hidden_size;
+        let num_heads = self.config.num_attention_heads;
+        let head_dim = self.config.head_dim();
+
+        // Patch embedding: reshape images into patches and project
+        let num_patches_h = height / patch_size;
+        let num_patches_w = width / patch_size;
+        let num_patches = num_patches_h * num_patches_w;
+
+        // Reshape: (batch, H, W, C) -> (batch, num_patches, patch_dim)
+        let patches = images.reshape(&[
+            batch_size,
+            num_patches_h,
+            patch_size,
+            num_patches_w,
+            patch_size,
+            3,
+        ])?;
+        let patches = patches.transpose_axes(&[0, 1, 3, 2, 4, 5])?;
+        let patches = patches.reshape(&[batch_size, num_patches, patch_size * patch_size * 3])?;
+
+        // Linear projection: (batch, num_patches, patch_dim) @ (patch_dim, hidden) -> (batch, num_patches, hidden)
+        let mut x = patches.matmul(&weights.patch_embed_weight)?;
+        x = &x + &weights.patch_embed_bias;
+
+        // Prepend class token
+        let class_token = weights.class_embedding.reshape(&[1, 1, hidden_size])?;
+        let class_tokens = broadcast_to(&class_token, &[batch_size, 1, hidden_size])?;
+        x = crate::ops::concatenate(&[&class_tokens, &x], 1)?;
+
+        // Add position embeddings
+        let seq_len = num_patches + 1;
+        let pos_embed = weights.position_embedding.slice(
+            &[0, 0],
+            &[seq_len, hidden_size],
+            None,
+        )?;
+        x = &x + &pos_embed;
+
+        // Pre-transformer layer norm
+        x = layer_norm(&x, &weights.pre_ln_weight, &weights.pre_ln_bias, self.config.layer_norm_eps)?;
+
+        // Transformer layers
+        for layer in &weights.layers {
+            // Pre-norm for attention
+            let normed = layer_norm(&x, &layer.ln1_weight, &layer.ln1_bias, self.config.layer_norm_eps)?;
+
+            // Self-attention
+            let q = normed.matmul(&layer.q_proj_weight)?;
+            let q = &q + &layer.q_proj_bias;
+            let k = normed.matmul(&layer.k_proj_weight)?;
+            let k = &k + &layer.k_proj_bias;
+            let v = normed.matmul(&layer.v_proj_weight)?;
+            let v = &v + &layer.v_proj_bias;
+
+            // Reshape for multi-head attention
+            let q = q.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+            let q = q.transpose_axes(&[0, 2, 1, 3])?;
+            let k = k.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+            let k = k.transpose_axes(&[0, 2, 1, 3])?;
+            let v = v.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+            let v = v.transpose_axes(&[0, 2, 1, 3])?;
+
+            // Scaled dot-product attention (no causal mask for vision)
+            let scale = Array::from_float((head_dim as f32).sqrt());
+            let scores = q.matmul(&k.transpose_axes(&[0, 1, 3, 2])?)?;
+            let scores = &scores / &scale;
+            let attn_weights = softmax(&scores, -1)?;
+            let attn_output = attn_weights.matmul(&v)?;
+
+            // Reshape back
+            let attn_output = attn_output.transpose_axes(&[0, 2, 1, 3])?;
+            let attn_output = attn_output.reshape(&[batch_size, seq_len, hidden_size])?;
+
+            // Output projection
+            let attn_output = attn_output.matmul(&layer.out_proj_weight)?;
+            let attn_output = &attn_output + &layer.out_proj_bias;
+
+            // Residual connection
+            x = &x + &attn_output;
+
+            // Pre-norm for MLP
+            let normed = layer_norm(&x, &layer.ln2_weight, &layer.ln2_bias, self.config.layer_norm_eps)?;
+
+            // MLP with quick GELU
+            let h = normed.matmul(&layer.mlp_fc1_weight)?;
+            let h = &h + &layer.mlp_fc1_bias;
+            let h = gelu(&h)?;
+            let h = h.matmul(&layer.mlp_fc2_weight)?;
+            let h = &h + &layer.mlp_fc2_bias;
+
+            // Residual connection
+            x = &x + &h;
+        }
+
+        // Post-transformer layer norm
+        x = layer_norm(&x, &weights.post_ln_weight, &weights.post_ln_bias, self.config.layer_norm_eps)?;
+
+        // Extract CLS token embedding
+        let cls_output = x.slice(&[0, 0, 0], &[batch_size, 1, hidden_size], None)?;
+        let cls_output = cls_output.reshape(&[batch_size, hidden_size])?;
+
+        Ok(cls_output)
+    }
+
+    /// Get the configuration.
+    pub fn config(&self) -> &CLIPVisionConfig {
+        &self.config
+    }
+}
+
+/// CLIP Text Encoder.
+///
+/// Encodes text into embeddings using a Transformer architecture.
+#[derive(Debug, Clone)]
+pub struct CLIPTextEncoder {
+    config: CLIPTextConfig,
+}
+
+impl CLIPTextEncoder {
+    /// Create a new CLIP text encoder.
+    pub fn new(config: CLIPTextConfig) -> Self {
+        Self { config }
+    }
+
+    /// Forward pass through the text encoder.
+    ///
+    /// # Arguments
+    /// * `input_ids` - Input token IDs with shape (batch, seq_len).
+    /// * `weights` - Text encoder weights.
+    ///
+    /// # Returns
+    /// Text embeddings with shape (batch, hidden_size).
+    pub fn forward(&self, input_ids: &Array, weights: &CLIPTextWeights) -> Result<Array> {
+        let shape = input_ids.shape();
+        if shape.len() != 2 {
+            return Err(Error::InvalidShape("Expected 2D input (batch, seq_len)".into()));
+        }
+        let batch_size = shape[0];
+        let seq_len = shape[1];
+
+        let hidden_size = self.config.hidden_size;
+        let num_heads = self.config.num_attention_heads;
+        let head_dim = self.config.head_dim();
+
+        // Token embedding
+        let mut x = embedding(&weights.token_embedding, input_ids)?;
+
+        // Position embedding
+        let pos_embed = weights.position_embedding.slice(
+            &[0, 0],
+            &[seq_len, hidden_size],
+            None,
+        )?;
+        x = &x + &pos_embed;
+
+        // Create causal attention mask
+        let mask = create_causal_mask(seq_len)?;
+
+        // Transformer layers
+        for layer in &weights.layers {
+            // Pre-norm for attention
+            let normed = layer_norm(&x, &layer.ln1_weight, &layer.ln1_bias, self.config.layer_norm_eps)?;
+
+            // Self-attention with causal mask
+            let q = normed.matmul(&layer.q_proj_weight)?;
+            let q = &q + &layer.q_proj_bias;
+            let k = normed.matmul(&layer.k_proj_weight)?;
+            let k = &k + &layer.k_proj_bias;
+            let v = normed.matmul(&layer.v_proj_weight)?;
+            let v = &v + &layer.v_proj_bias;
+
+            // Reshape for multi-head attention
+            let q = q.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+            let q = q.transpose_axes(&[0, 2, 1, 3])?;
+            let k = k.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+            let k = k.transpose_axes(&[0, 2, 1, 3])?;
+            let v = v.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+            let v = v.transpose_axes(&[0, 2, 1, 3])?;
+
+            // Scaled dot-product attention with causal mask
+            let scale = Array::from_float((head_dim as f32).sqrt());
+            let scores = q.matmul(&k.transpose_axes(&[0, 1, 3, 2])?)?;
+            let scores = &scores / &scale;
+            let scores = &scores + &mask;
+            let attn_weights = softmax(&scores, -1)?;
+            let attn_output = attn_weights.matmul(&v)?;
+
+            // Reshape back
+            let attn_output = attn_output.transpose_axes(&[0, 2, 1, 3])?;
+            let attn_output = attn_output.reshape(&[batch_size, seq_len, hidden_size])?;
+
+            // Output projection
+            let attn_output = attn_output.matmul(&layer.out_proj_weight)?;
+            let attn_output = &attn_output + &layer.out_proj_bias;
+
+            // Residual connection
+            x = &x + &attn_output;
+
+            // Pre-norm for MLP
+            let normed = layer_norm(&x, &layer.ln2_weight, &layer.ln2_bias, self.config.layer_norm_eps)?;
+
+            // MLP with quick GELU
+            let h = normed.matmul(&layer.mlp_fc1_weight)?;
+            let h = &h + &layer.mlp_fc1_bias;
+            let h = gelu(&h)?;
+            let h = h.matmul(&layer.mlp_fc2_weight)?;
+            let h = &h + &layer.mlp_fc2_bias;
+
+            // Residual connection
+            x = &x + &h;
+        }
+
+        // Final layer norm
+        x = layer_norm(&x, &weights.ln_final_weight, &weights.ln_final_bias, self.config.layer_norm_eps)?;
+
+        // Take features from EOT (end of text) token
+        // In CLIP, this is the last position (or position of highest token ID in the sequence)
+        // For simplicity, we take the last position
+        let text_output = x.slice(
+            &[0, seq_len - 1, 0],
+            &[batch_size, seq_len, hidden_size],
+            None,
+        )?;
+        let text_output = text_output.reshape(&[batch_size, hidden_size])?;
+
+        Ok(text_output)
+    }
+
+    /// Get the configuration.
+    pub fn config(&self) -> &CLIPTextConfig {
+        &self.config
+    }
+}
+
+/// CLIP Model.
+///
+/// Combines vision and text encoders with a shared embedding space.
+#[derive(Debug, Clone)]
+pub struct CLIPModel {
+    config: CLIPConfig,
+    vision_encoder: CLIPVisionEncoder,
+    text_encoder: CLIPTextEncoder,
+}
+
+impl CLIPModel {
+    /// Create a new CLIP model.
+    pub fn new(config: CLIPConfig) -> Self {
+        let vision_encoder = CLIPVisionEncoder::new(config.vision.clone());
+        let text_encoder = CLIPTextEncoder::new(config.text.clone());
+        Self {
+            config,
+            vision_encoder,
+            text_encoder,
+        }
+    }
+
+    /// Encode images into the shared embedding space.
+    ///
+    /// # Arguments
+    /// * `images` - Input images with shape (batch, height, width, channels).
+    /// * `weights` - CLIP weights.
+    ///
+    /// # Returns
+    /// Normalized image embeddings with shape (batch, projection_dim).
+    pub fn encode_image(&self, images: &Array, weights: &CLIPWeights) -> Result<Array> {
+        // Get vision features
+        let features = self.vision_encoder.forward(images, &weights.vision)?;
+
+        // Project to shared space
+        let projected = features.matmul(&weights.vision.visual_proj_weight)?;
+
+        // L2 normalize
+        let squared = &projected * &projected;
+        let norm = squared.sum_axes(&[-1], true)?;
+        let norm = norm.sqrt()?;
+        let normalized = &projected / &norm;
+
+        Ok(normalized)
+    }
+
+    /// Encode text into the shared embedding space.
+    ///
+    /// # Arguments
+    /// * `input_ids` - Input token IDs with shape (batch, seq_len).
+    /// * `weights` - CLIP weights.
+    ///
+    /// # Returns
+    /// Normalized text embeddings with shape (batch, projection_dim).
+    pub fn encode_text(&self, input_ids: &Array, weights: &CLIPWeights) -> Result<Array> {
+        // Get text features
+        let features = self.text_encoder.forward(input_ids, &weights.text)?;
+
+        // Project to shared space
+        let projected = features.matmul(&weights.text.text_proj_weight)?;
+
+        // L2 normalize
+        let squared = &projected * &projected;
+        let norm = squared.sum_axes(&[-1], true)?;
+        let norm = norm.sqrt()?;
+        let normalized = &projected / &norm;
+
+        Ok(normalized)
+    }
+
+    /// Compute similarity scores between images and text.
+    ///
+    /// # Arguments
+    /// * `images` - Input images with shape (batch_images, height, width, channels).
+    /// * `input_ids` - Input token IDs with shape (batch_text, seq_len).
+    /// * `weights` - CLIP weights.
+    ///
+    /// # Returns
+    /// Similarity logits with shape (batch_images, batch_text).
+    pub fn forward(
+        &self,
+        images: &Array,
+        input_ids: &Array,
+        weights: &CLIPWeights,
+    ) -> Result<Array> {
+        // Encode both modalities
+        let image_embeds = self.encode_image(images, weights)?;
+        let text_embeds = self.encode_text(input_ids, weights)?;
+
+        // Compute cosine similarity (embeddings are already normalized)
+        // logits = (image_embeds @ text_embeds.T) * exp(logit_scale)
+        let logits = image_embeds.matmul(&text_embeds.transpose()?)?;
+        let scale = weights.logit_scale.exp()?;
+        let logits = &logits * &scale;
+
+        Ok(logits)
+    }
+
+    /// Get image-text matching probabilities.
+    ///
+    /// # Arguments
+    /// * `images` - Input images with shape (batch_images, height, width, channels).
+    /// * `input_ids` - Input token IDs with shape (batch_text, seq_len).
+    /// * `weights` - CLIP weights.
+    ///
+    /// # Returns
+    /// Tuple of (image_to_text_probs, text_to_image_probs).
+    pub fn get_probs(
+        &self,
+        images: &Array,
+        input_ids: &Array,
+        weights: &CLIPWeights,
+    ) -> Result<(Array, Array)> {
+        let logits = self.forward(images, input_ids, weights)?;
+
+        // Image-to-text probabilities (softmax over text dimension)
+        let image_to_text = softmax(&logits, -1)?;
+
+        // Text-to-image probabilities (softmax over image dimension)
+        let text_to_image = softmax(&logits, 0)?;
+
+        Ok((image_to_text, text_to_image))
+    }
+
+    /// Zero-shot image classification.
+    ///
+    /// # Arguments
+    /// * `images` - Input images with shape (batch, height, width, channels).
+    /// * `text_embeds` - Pre-computed text embeddings for class labels with shape (num_classes, projection_dim).
+    /// * `weights` - CLIP weights.
+    ///
+    /// # Returns
+    /// Classification probabilities with shape (batch, num_classes).
+    pub fn classify(
+        &self,
+        images: &Array,
+        text_embeds: &Array,
+        weights: &CLIPWeights,
+    ) -> Result<Array> {
+        // Encode images
+        let image_embeds = self.encode_image(images, weights)?;
+
+        // Compute similarity
+        let logits = image_embeds.matmul(&text_embeds.transpose()?)?;
+        let scale = weights.logit_scale.exp()?;
+        let logits = &logits * &scale;
+
+        // Softmax over classes
+        let probs = softmax(&logits, -1)?;
+
+        Ok(probs)
+    }
+
+    /// Get the configuration.
+    pub fn config(&self) -> &CLIPConfig {
+        &self.config
+    }
+
+    /// Get the vision encoder.
+    pub fn vision_encoder(&self) -> &CLIPVisionEncoder {
+        &self.vision_encoder
+    }
+
+    /// Get the text encoder.
+    pub fn text_encoder(&self) -> &CLIPTextEncoder {
+        &self.text_encoder
+    }
+}

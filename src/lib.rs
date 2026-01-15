@@ -4153,4 +4153,182 @@ mod tests {
 
         assert_eq!(logits.shape(), vec![2, 4, 500]);
     }
+
+    // =========================================================================
+    // CLIP Tests
+    // =========================================================================
+
+    #[test]
+    fn test_clip_config() {
+        use nn::{CLIPConfig, CLIPVisionConfig, CLIPTextConfig};
+
+        // Test vision config presets
+        let vit_b32 = CLIPVisionConfig::vit_base_patch32();
+        assert_eq!(vit_b32.image_size, 224);
+        assert_eq!(vit_b32.patch_size, 32);
+        assert_eq!(vit_b32.hidden_size, 768);
+        assert_eq!(vit_b32.num_patches(), 49); // (224/32)^2
+
+        let vit_l14 = CLIPVisionConfig::vit_large_patch14();
+        assert_eq!(vit_l14.hidden_size, 1024);
+        assert_eq!(vit_l14.patch_size, 14);
+        assert_eq!(vit_l14.num_patches(), 256); // (224/14)^2
+
+        // Test text config presets
+        let text_base = CLIPTextConfig::clip_base();
+        assert_eq!(text_base.vocab_size, 49408);
+        assert_eq!(text_base.max_position_embeddings, 77);
+        assert_eq!(text_base.hidden_size, 512);
+
+        // Test combined config
+        let clip = CLIPConfig::clip_vit_base_patch32();
+        assert_eq!(clip.projection_dim, 512);
+        assert_eq!(clip.vision.hidden_size, 768);
+        assert_eq!(clip.text.hidden_size, 512);
+    }
+
+    #[test]
+    fn test_clip_vision_encoder() {
+        use nn::{CLIPVisionConfig, CLIPVisionEncoder, CLIPVisionWeights};
+
+        // Use small config for testing
+        let config = CLIPVisionConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(64);
+
+        let weights = CLIPVisionWeights::random(&config).unwrap();
+        let encoder = CLIPVisionEncoder::new(config);
+
+        // Dummy images: (batch, height, width, channels)
+        let images = Array::zeros::<f32>(&[2, 32, 32, 3]).unwrap();
+
+        let output = encoder.forward(&images, &weights).unwrap();
+        output.eval();
+
+        // Output: (batch, hidden_size)
+        assert_eq!(output.shape(), vec![2, 32]);
+    }
+
+    #[test]
+    fn test_clip_text_encoder() {
+        use nn::{CLIPTextConfig, CLIPTextEncoder, CLIPTextWeights};
+
+        // Use small config for testing
+        let config = CLIPTextConfig::new()
+            .vocab_size(100)
+            .max_position_embeddings(16)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(64);
+
+        let weights = CLIPTextWeights::random(&config).unwrap();
+        let encoder = CLIPTextEncoder::new(config);
+
+        // Dummy tokens: (batch, seq_len)
+        let tokens = Array::from_slice(&[1i32, 2, 3, 4, 5, 6, 7, 8], &[2, 4]).unwrap();
+
+        let output = encoder.forward(&tokens, &weights).unwrap();
+        output.eval();
+
+        // Output: (batch, hidden_size)
+        assert_eq!(output.shape(), vec![2, 32]);
+    }
+
+    #[test]
+    fn test_clip_full_model() {
+        use nn::{CLIPConfig, CLIPVisionConfig, CLIPTextConfig, CLIPModel, CLIPWeights};
+
+        // Use small configs for testing
+        let vision_config = CLIPVisionConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(64);
+
+        let text_config = CLIPTextConfig::new()
+            .vocab_size(100)
+            .max_position_embeddings(16)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(64);
+
+        let config = CLIPConfig::new()
+            .vision(vision_config)
+            .text(text_config)
+            .projection_dim(16);
+
+        let weights = CLIPWeights::random(&config).unwrap();
+        let model = CLIPModel::new(config);
+
+        // Dummy inputs
+        let images = Array::zeros::<f32>(&[2, 32, 32, 3]).unwrap();
+        let tokens = Array::from_slice(&[1i32, 2, 3, 4, 5, 6, 7, 8], &[2, 4]).unwrap();
+
+        // Test encode_image
+        let image_embeds = model.encode_image(&images, &weights).unwrap();
+        image_embeds.eval();
+        assert_eq!(image_embeds.shape(), vec![2, 16]); // (batch, projection_dim)
+
+        // Test encode_text
+        let text_embeds = model.encode_text(&tokens, &weights).unwrap();
+        text_embeds.eval();
+        assert_eq!(text_embeds.shape(), vec![2, 16]); // (batch, projection_dim)
+
+        // Test forward (similarity scores)
+        let logits = model.forward(&images, &tokens, &weights).unwrap();
+        logits.eval();
+        assert_eq!(logits.shape(), vec![2, 2]); // (num_images, num_texts)
+    }
+
+    #[test]
+    fn test_clip_classify() {
+        use nn::{CLIPConfig, CLIPVisionConfig, CLIPTextConfig, CLIPModel, CLIPWeights};
+
+        // Use small configs for testing
+        let vision_config = CLIPVisionConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(64);
+
+        let text_config = CLIPTextConfig::new()
+            .vocab_size(100)
+            .max_position_embeddings(16)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(64);
+
+        let config = CLIPConfig::new()
+            .vision(vision_config)
+            .text(text_config)
+            .projection_dim(16);
+
+        let weights = CLIPWeights::random(&config).unwrap();
+        let model = CLIPModel::new(config);
+
+        // Dummy inputs
+        let images = Array::zeros::<f32>(&[3, 32, 32, 3]).unwrap();
+
+        // Pre-computed text embeddings for 5 classes (num_classes, projection_dim)
+        let class_embeds = Array::from_slice(
+            &vec![0.1f32; 5 * 16],
+            &[5, 16],
+        ).unwrap();
+
+        // Classify
+        let probs = model.classify(&images, &class_embeds, &weights).unwrap();
+        probs.eval();
+        assert_eq!(probs.shape(), vec![3, 5]); // (batch, num_classes)
+    }
 }

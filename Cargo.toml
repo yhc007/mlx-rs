@@ -66,3 +66,7 @@ path = "examples/whisper.rs"
 [[example]]
 name = "gpt2"
 path = "examples/gpt2.rs"
+
+[[example]]
+name = "clip"
+path = "examples/clip.rs"
