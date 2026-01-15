@@ -4,7 +4,7 @@
 //!
 //! Run with: cargo run --example basic_arrays
 
-use mlx_rs::{Array, ops};
+use mlx_rs::Array;
 
 fn main() -> mlx_rs::error::Result<()> {
     println!("=== MLX-RS Basic Array Operations ===\n");

@@ -3649,7 +3649,7 @@ pub fn precompute_rope_frequencies(
 /// * `delta` - Threshold for switching between L1 and L2 (default 1.0)
 /// * `reduction` - How to reduce the loss ("mean", "sum", "none")
 pub fn huber_loss(predictions: &Array, targets: &Array, delta: f32, reduction: &str) -> Result<Array> {
-    let stream = Stream::default();
+    let _stream = Stream::default();
 
     // diff = predictions - targets
     let diff = predictions - targets;
@@ -5154,7 +5154,7 @@ pub fn llama_attention(
     let seq_len = shape[1] as i32;
     let hidden_size = shape[2] as i32;
     let head_dim = hidden_size / num_heads;
-    let kv_hidden_size = head_dim * num_kv_heads;
+    let _kv_hidden_size = head_dim * num_kv_heads;
 
     // Project to Q, K, V
     let q = x.matmul(q_proj)?;
@@ -5414,7 +5414,7 @@ impl LlamaModel {
             return Err(Error::InvalidShape("Expected 2D input_ids (batch, seq_len)".into()));
         }
 
-        let batch = shape[0] as i32;
+        let _batch = shape[0] as i32;
         let seq_len = shape[1] as i32;
 
         // Token embedding

@@ -4,7 +4,7 @@
 //!
 //! Run with: cargo run --example neural_network
 
-use mlx_rs::{Array, nn, random, transforms};
+use mlx_rs::{Array, nn, random};
 
 fn main() -> mlx_rs::error::Result<()> {
     println!("=== MLX-RS Neural Network Example ===\n");

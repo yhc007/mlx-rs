@@ -5,7 +5,7 @@
 //! Run with: cargo run --example llama
 
 use mlx_rs::{Array, nn, random};
-use mlx_rs::nn::{LlamaConfig, LlamaModel, swiglu, llama_feedforward};
+use mlx_rs::nn::{LlamaConfig, swiglu, llama_feedforward};
 
 fn main() -> mlx_rs::error::Result<()> {
     println!("=== MLX-RS Llama Model Example ===\n");

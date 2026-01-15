@@ -4,7 +4,7 @@
 //!
 //! Run with: cargo run --example optimizer
 
-use mlx_rs::{Array, nn, random, transforms};
+use mlx_rs::{Array, nn, random};
 use mlx_rs::nn::Optimizer;
 
 fn main() -> mlx_rs::error::Result<()> {

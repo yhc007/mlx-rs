@@ -1632,7 +1632,7 @@ mod tests {
     #[test]
     fn test_glu() {
         // GLU splits input in half along axis and applies sigmoid gate
-        let x = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let _x = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
         // GLU needs even size along the split axis
         let x2 = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
 
@@ -2851,8 +2851,8 @@ mod tests {
         use device::Device;
 
         // Check that GPU device can be created on Apple Silicon
-        let gpu = Device::gpu();
-        let cpu = Device::cpu();
+        let _gpu = Device::gpu();
+        let _cpu = Device::cpu();
 
         // Default device should be available
         let default = Device::default_device();
@@ -2866,7 +2866,7 @@ mod tests {
 
         // Create array on GPU
         let gpu = Device::gpu();
-        let stream = Stream::new(&gpu);
+        let _stream = Stream::new(&gpu);
 
         let a = Array::zeros::<f32>(&[1000, 1000]).unwrap();
         a.eval();
