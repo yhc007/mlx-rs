@@ -2564,6 +2564,218 @@ mod tests {
     }
 
     // ============================================================================
+    // BERT Model Tests
+    // ============================================================================
+
+    #[test]
+    fn test_bert_config() {
+        use nn::BertConfig;
+
+        // Test default config
+        let config = BertConfig::new();
+        assert_eq!(config.vocab_size, 30522);
+        assert_eq!(config.hidden_size, 768);
+        assert_eq!(config.num_hidden_layers, 12);
+        assert_eq!(config.num_attention_heads, 12);
+        assert_eq!(config.intermediate_size, 3072);
+        assert_eq!(config.head_dim(), 64);
+
+        // Test preset configs
+        let base = BertConfig::bert_base_uncased();
+        assert_eq!(base.hidden_size, 768);
+
+        let large = BertConfig::bert_large_uncased();
+        assert_eq!(large.hidden_size, 1024);
+        assert_eq!(large.num_hidden_layers, 24);
+        assert_eq!(large.num_attention_heads, 16);
+
+        // Test builder pattern
+        let custom = BertConfig::new()
+            .hidden_size(512)
+            .num_hidden_layers(6)
+            .num_attention_heads(8);
+        assert_eq!(custom.hidden_size, 512);
+        assert_eq!(custom.num_hidden_layers, 6);
+        assert_eq!(custom.head_dim(), 64);
+    }
+
+    #[test]
+    fn test_bert_forward() {
+        use nn::{BertConfig, BertModel, BertWeights};
+
+        // Use a small config for testing
+        let config = BertConfig::new()
+            .vocab_size(1000)
+            .hidden_size(64)
+            .num_hidden_layers(2)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .max_position_embeddings(128);
+
+        let weights = BertWeights::random(&config).unwrap();
+        let model = BertModel::new(config.clone());
+
+        // Create input: batch=1, seq_len=5
+        let input_ids = Array::from_slice(&[1i32, 2, 3, 4, 5], &[1, 5]).unwrap();
+
+        // Forward pass
+        let (last_hidden, pooled) = model.forward(&input_ids, None, None, &weights).unwrap();
+        last_hidden.eval();
+        pooled.eval();
+
+        // Check shapes
+        assert_eq!(last_hidden.shape(), vec![1, 5, 64]);  // (batch, seq, hidden)
+        assert_eq!(pooled.shape(), vec![1, 64]);  // (batch, hidden)
+    }
+
+    #[test]
+    fn test_bert_with_attention_mask() {
+        use nn::{BertConfig, BertModel, BertWeights};
+
+        let config = BertConfig::new()
+            .vocab_size(1000)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .max_position_embeddings(128);
+
+        let weights = BertWeights::random(&config).unwrap();
+        let model = BertModel::new(config);
+
+        // Input with padding
+        let input_ids = Array::from_slice(&[1i32, 2, 3, 0, 0], &[1, 5]).unwrap();
+        let attention_mask = Array::from_slice(&[1.0f32, 1.0, 1.0, 0.0, 0.0], &[1, 5]).unwrap();
+
+        let (last_hidden, pooled) = model.forward(
+            &input_ids,
+            None,
+            Some(&attention_mask),
+            &weights,
+        ).unwrap();
+        last_hidden.eval();
+        pooled.eval();
+
+        assert_eq!(last_hidden.shape(), vec![1, 5, 64]);
+        assert_eq!(pooled.shape(), vec![1, 64]);
+    }
+
+    #[test]
+    fn test_bert_with_token_type_ids() {
+        use nn::{BertConfig, BertModel, BertWeights};
+
+        let config = BertConfig::new()
+            .vocab_size(1000)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .max_position_embeddings(128);
+
+        let weights = BertWeights::random(&config).unwrap();
+        let model = BertModel::new(config);
+
+        // Two sentences: [CLS] sent1 [SEP] sent2 [SEP]
+        let input_ids = Array::from_slice(&[101i32, 1, 2, 102, 3, 4, 102], &[1, 7]).unwrap();
+        let token_type_ids = Array::from_slice(&[0i32, 0, 0, 0, 1, 1, 1], &[1, 7]).unwrap();
+
+        let (last_hidden, pooled) = model.forward(
+            &input_ids,
+            Some(&token_type_ids),
+            None,
+            &weights,
+        ).unwrap();
+        last_hidden.eval();
+        pooled.eval();
+
+        assert_eq!(last_hidden.shape(), vec![1, 7, 64]);
+        assert_eq!(pooled.shape(), vec![1, 64]);
+    }
+
+    #[test]
+    fn test_bert_batch() {
+        use nn::{BertConfig, BertModel, BertWeights};
+
+        let config = BertConfig::new()
+            .vocab_size(1000)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .max_position_embeddings(128);
+
+        let weights = BertWeights::random(&config).unwrap();
+        let model = BertModel::new(config);
+
+        // Batch of 2 sequences
+        let input_ids = Array::from_slice(&[
+            1i32, 2, 3, 4,
+            5, 6, 7, 8,
+        ], &[2, 4]).unwrap();
+
+        let (last_hidden, pooled) = model.forward(&input_ids, None, None, &weights).unwrap();
+        last_hidden.eval();
+        pooled.eval();
+
+        assert_eq!(last_hidden.shape(), vec![2, 4, 64]);
+        assert_eq!(pooled.shape(), vec![2, 64]);
+    }
+
+    #[test]
+    fn test_bert_pooling_methods() {
+        use nn::{BertConfig, BertModel, BertWeights};
+
+        let config = BertConfig::new()
+            .vocab_size(1000)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .max_position_embeddings(128);
+
+        let weights = BertWeights::random(&config).unwrap();
+        let model = BertModel::new(config);
+
+        let input_ids = Array::from_slice(&[1i32, 2, 3, 4], &[1, 4]).unwrap();
+
+        // Test encode (last hidden state)
+        let encoded = model.encode(&input_ids, None, None, &weights).unwrap();
+        encoded.eval();
+        assert_eq!(encoded.shape(), vec![1, 4, 64]);
+
+        // Test get_pooled_output ([CLS] token)
+        let pooled = model.get_pooled_output(&input_ids, None, None, &weights).unwrap();
+        pooled.eval();
+        assert_eq!(pooled.shape(), vec![1, 64]);
+
+        // Test get_mean_pooled (average of all tokens)
+        let mean_pooled = model.get_mean_pooled(&input_ids, None, None, &weights).unwrap();
+        mean_pooled.eval();
+        assert_eq!(mean_pooled.shape(), vec![1, 64]);
+    }
+
+    #[test]
+    fn test_bert_attention_mask_creation() {
+        use nn::create_bert_attention_mask;
+
+        // Mask with 3 real tokens and 2 padding
+        let mask = Array::from_slice(&[1.0f32, 1.0, 1.0, 0.0, 0.0], &[1, 5]).unwrap();
+        let extended = create_bert_attention_mask(&mask).unwrap();
+        extended.eval();
+
+        // Should be (1, 1, 1, 5)
+        assert_eq!(extended.shape(), vec![1, 1, 1, 5]);
+
+        // Real tokens should have 0, padding should have large negative
+        let values = extended.to_vec::<f32>().unwrap();
+        assert_eq!(values[0], 0.0);  // Real token
+        assert_eq!(values[1], 0.0);  // Real token
+        assert_eq!(values[2], 0.0);  // Real token
+        assert!(values[3] < -1000.0);  // Padding
+        assert!(values[4] < -1000.0);  // Padding
+    }
+
+    // ============================================================================
     // Comprehensive Array Operation Tests
     // ============================================================================
 

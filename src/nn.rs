@@ -5564,3 +5564,719 @@ pub fn create_causal_mask(seq_len: i32) -> Result<Array> {
     // Where condition is true (upper triangle), use -inf; otherwise use 0
     crate::ops::where_cond(&condition, &neg_inf_val, &zeros_scalar)
 }
+
+// ============================================================================
+// BERT Model Implementation
+// ============================================================================
+
+/// Configuration for BERT models.
+///
+/// BERT (Bidirectional Encoder Representations from Transformers) is an
+/// encoder-only transformer model for embeddings, classification, and NLU tasks.
+///
+/// # Example
+/// ```ignore
+/// use mlx_rs::nn::BertConfig;
+///
+/// // Use a preset
+/// let config = BertConfig::bert_base_uncased();
+///
+/// // Or customize
+/// let config = BertConfig::new()
+///     .hidden_size(768)
+///     .num_hidden_layers(12)
+///     .num_attention_heads(12);
+/// ```
+#[derive(Debug, Clone)]
+pub struct BertConfig {
+    /// Vocabulary size
+    pub vocab_size: i32,
+    /// Hidden size (embedding dimension)
+    pub hidden_size: i32,
+    /// Number of transformer layers
+    pub num_hidden_layers: i32,
+    /// Number of attention heads
+    pub num_attention_heads: i32,
+    /// Intermediate size in feed-forward layers
+    pub intermediate_size: i32,
+    /// Hidden activation function (gelu or relu)
+    pub hidden_act: String,
+    /// Dropout probability
+    pub hidden_dropout_prob: f32,
+    /// Attention dropout probability
+    pub attention_probs_dropout_prob: f32,
+    /// Maximum sequence length
+    pub max_position_embeddings: i32,
+    /// Number of token types (segment IDs)
+    pub type_vocab_size: i32,
+    /// Layer normalization epsilon
+    pub layer_norm_eps: f32,
+    /// Padding token ID
+    pub pad_token_id: i32,
+}
+
+impl Default for BertConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BertConfig {
+    /// Create a new BERT configuration with default values.
+    pub fn new() -> Self {
+        Self {
+            vocab_size: 30522,
+            hidden_size: 768,
+            num_hidden_layers: 12,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+            hidden_act: "gelu".to_string(),
+            hidden_dropout_prob: 0.1,
+            attention_probs_dropout_prob: 0.1,
+            max_position_embeddings: 512,
+            type_vocab_size: 2,
+            layer_norm_eps: 1e-12,
+            pad_token_id: 0,
+        }
+    }
+
+    /// BERT Base Uncased configuration (110M parameters).
+    pub fn bert_base_uncased() -> Self {
+        Self::new()
+    }
+
+    /// BERT Base Cased configuration.
+    pub fn bert_base_cased() -> Self {
+        Self {
+            vocab_size: 28996,
+            ..Self::new()
+        }
+    }
+
+    /// BERT Large Uncased configuration (340M parameters).
+    pub fn bert_large_uncased() -> Self {
+        Self {
+            vocab_size: 30522,
+            hidden_size: 1024,
+            num_hidden_layers: 24,
+            num_attention_heads: 16,
+            intermediate_size: 4096,
+            ..Self::new()
+        }
+    }
+
+    /// BERT Large Cased configuration.
+    pub fn bert_large_cased() -> Self {
+        Self {
+            vocab_size: 28996,
+            hidden_size: 1024,
+            num_hidden_layers: 24,
+            num_attention_heads: 16,
+            intermediate_size: 4096,
+            ..Self::new()
+        }
+    }
+
+    // Builder methods
+    pub fn vocab_size(mut self, vocab_size: i32) -> Self {
+        self.vocab_size = vocab_size;
+        self
+    }
+
+    pub fn hidden_size(mut self, hidden_size: i32) -> Self {
+        self.hidden_size = hidden_size;
+        self
+    }
+
+    pub fn num_hidden_layers(mut self, num_hidden_layers: i32) -> Self {
+        self.num_hidden_layers = num_hidden_layers;
+        self
+    }
+
+    pub fn num_attention_heads(mut self, num_attention_heads: i32) -> Self {
+        self.num_attention_heads = num_attention_heads;
+        self
+    }
+
+    pub fn intermediate_size(mut self, intermediate_size: i32) -> Self {
+        self.intermediate_size = intermediate_size;
+        self
+    }
+
+    pub fn max_position_embeddings(mut self, max_position_embeddings: i32) -> Self {
+        self.max_position_embeddings = max_position_embeddings;
+        self
+    }
+
+    pub fn type_vocab_size(mut self, type_vocab_size: i32) -> Self {
+        self.type_vocab_size = type_vocab_size;
+        self
+    }
+
+    pub fn layer_norm_eps(mut self, layer_norm_eps: f32) -> Self {
+        self.layer_norm_eps = layer_norm_eps;
+        self
+    }
+
+    /// Get the head dimension.
+    pub fn head_dim(&self) -> i32 {
+        self.hidden_size / self.num_attention_heads
+    }
+}
+
+/// BERT embeddings layer.
+///
+/// Combines word embeddings, position embeddings, and token type embeddings,
+/// followed by layer normalization.
+pub fn bert_embeddings(
+    input_ids: &Array,
+    token_type_ids: Option<&Array>,
+    position_ids: Option<&Array>,
+    word_embeddings: &Array,
+    position_embeddings: &Array,
+    token_type_embeddings: &Array,
+    layer_norm_weight: &Array,
+    layer_norm_bias: &Array,
+    config: &BertConfig,
+) -> Result<Array> {
+    let shape = input_ids.shape();
+    if shape.len() != 2 {
+        return Err(Error::InvalidShape("Expected 2D input_ids (batch, seq_len)".into()));
+    }
+
+    let batch_size = shape[0] as i32;
+    let seq_len = shape[1] as i32;
+
+    // Word embeddings
+    let words_embeds = embedding(word_embeddings, input_ids)?;
+
+    // Position embeddings
+    let pos_embeds = if let Some(pos_ids) = position_ids {
+        embedding(position_embeddings, pos_ids)?
+    } else {
+        // Create position IDs: [0, 1, 2, ..., seq_len-1]
+        let pos_ids = Array::arange::<i32>(0.0, seq_len as f64, 1.0)?;
+        let pos_ids = pos_ids.reshape(&[1, seq_len])?;
+        // Broadcast to batch
+        let pos_embeds = embedding(position_embeddings, &pos_ids)?;
+        // Broadcast to batch size
+        broadcast_to(&pos_embeds, &[batch_size, seq_len, config.hidden_size])?
+    };
+
+    // Token type embeddings
+    let token_embeds = if let Some(tt_ids) = token_type_ids {
+        embedding(token_type_embeddings, tt_ids)?
+    } else {
+        // Default to zeros (all segment A)
+        let tt_ids = Array::zeros::<i32>(&[batch_size, seq_len])?;
+        embedding(token_type_embeddings, &tt_ids)?
+    };
+
+    // Sum embeddings
+    let embeddings = &(&words_embeds + &pos_embeds) + &token_embeds;
+
+    // Layer normalization
+    layer_norm(&embeddings, layer_norm_weight, layer_norm_bias, config.layer_norm_eps)
+}
+
+/// Broadcast an array to target shape.
+fn broadcast_to(x: &Array, target_shape: &[i32]) -> Result<Array> {
+    let stream = Stream::default();
+    let mut result = Array::new_uninit();
+
+    let status = unsafe {
+        mlx_sys::mlx_broadcast_to(
+            result.as_mut_ptr(),
+            x.as_raw(),
+            target_shape.as_ptr(),
+            target_shape.len(),
+            stream.as_raw(),
+        )
+    };
+
+    if status != 0 {
+        return Err(Error::ArrayCreation("Failed to broadcast array".into()));
+    }
+
+    Ok(result)
+}
+
+/// BERT self-attention mechanism.
+///
+/// Multi-head self-attention without masking (bidirectional).
+pub fn bert_self_attention(
+    hidden_states: &Array,
+    query_weight: &Array,
+    query_bias: &Array,
+    key_weight: &Array,
+    key_bias: &Array,
+    value_weight: &Array,
+    value_bias: &Array,
+    attention_mask: Option<&Array>,
+    config: &BertConfig,
+) -> Result<Array> {
+    let shape = hidden_states.shape();
+    let batch_size = shape[0] as i32;
+    let seq_len = shape[1] as i32;
+    let hidden_size = config.hidden_size;
+    let num_heads = config.num_attention_heads;
+    let head_dim = config.head_dim();
+
+    // Linear projections: (batch, seq, hidden) @ (hidden, hidden) -> (batch, seq, hidden)
+    let query = hidden_states.matmul(query_weight)?;
+    let query = &query + query_bias;
+
+    let key = hidden_states.matmul(key_weight)?;
+    let key = &key + key_bias;
+
+    let value = hidden_states.matmul(value_weight)?;
+    let value = &value + value_bias;
+
+    // Reshape for multi-head attention: (batch, seq, hidden) -> (batch, num_heads, seq, head_dim)
+    let query = query.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+    let query = query.transpose_axes(&[0, 2, 1, 3])?;
+
+    let key = key.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+    let key = key.transpose_axes(&[0, 2, 1, 3])?;
+
+    let value = value.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+    let value = value.transpose_axes(&[0, 2, 1, 3])?;
+
+    // Attention scores: (batch, heads, seq, head_dim) @ (batch, heads, head_dim, seq)
+    let key_t = key.transpose_axes(&[0, 1, 3, 2])?;
+    let mut attention_scores = query.matmul(&key_t)?;
+
+    // Scale
+    let scale = Array::from_float((head_dim as f32).sqrt());
+    attention_scores = &attention_scores / &scale;
+
+    // Apply attention mask if provided
+    if let Some(mask) = attention_mask {
+        // Mask shape should be (batch, 1, 1, seq) or (batch, 1, seq, seq)
+        attention_scores = &attention_scores + mask;
+    }
+
+    // Softmax
+    let attention_probs = softmax(&attention_scores, -1)?;
+
+    // Context: (batch, heads, seq, head_dim)
+    let context = attention_probs.matmul(&value)?;
+
+    // Reshape back: (batch, heads, seq, head_dim) -> (batch, seq, hidden)
+    let context = context.transpose_axes(&[0, 2, 1, 3])?;
+    context.reshape(&[batch_size, seq_len, hidden_size])
+}
+
+/// BERT attention output (projection + residual + layer norm).
+pub fn bert_attention_output(
+    hidden_states: &Array,
+    input_tensor: &Array,
+    dense_weight: &Array,
+    dense_bias: &Array,
+    layer_norm_weight: &Array,
+    layer_norm_bias: &Array,
+    config: &BertConfig,
+) -> Result<Array> {
+    // Dense projection
+    let hidden_states = hidden_states.matmul(dense_weight)?;
+    let hidden_states = &hidden_states + dense_bias;
+
+    // Residual connection and layer norm
+    let hidden_states = &hidden_states + input_tensor;
+    layer_norm(&hidden_states, layer_norm_weight, layer_norm_bias, config.layer_norm_eps)
+}
+
+/// BERT intermediate layer (first part of feed-forward).
+pub fn bert_intermediate(
+    hidden_states: &Array,
+    dense_weight: &Array,
+    dense_bias: &Array,
+) -> Result<Array> {
+    let hidden_states = hidden_states.matmul(dense_weight)?;
+    let hidden_states = &hidden_states + dense_bias;
+    // GELU activation
+    gelu(&hidden_states)
+}
+
+/// BERT output layer (second part of feed-forward with residual).
+pub fn bert_output(
+    hidden_states: &Array,
+    input_tensor: &Array,
+    dense_weight: &Array,
+    dense_bias: &Array,
+    layer_norm_weight: &Array,
+    layer_norm_bias: &Array,
+    config: &BertConfig,
+) -> Result<Array> {
+    let hidden_states = hidden_states.matmul(dense_weight)?;
+    let hidden_states = &hidden_states + dense_bias;
+
+    // Residual and layer norm
+    let hidden_states = &hidden_states + input_tensor;
+    layer_norm(&hidden_states, layer_norm_weight, layer_norm_bias, config.layer_norm_eps)
+}
+
+/// BERT transformer layer.
+///
+/// A single BERT layer consisting of:
+/// 1. Self-attention
+/// 2. Attention output (projection + residual + layer norm)
+/// 3. Intermediate (feed-forward part 1)
+/// 4. Output (feed-forward part 2 + residual + layer norm)
+pub fn bert_layer(
+    hidden_states: &Array,
+    layer_weights: &BertLayerWeights,
+    attention_mask: Option<&Array>,
+    config: &BertConfig,
+) -> Result<Array> {
+    // Self-attention
+    let attention_output = bert_self_attention(
+        hidden_states,
+        &layer_weights.attention_query_weight,
+        &layer_weights.attention_query_bias,
+        &layer_weights.attention_key_weight,
+        &layer_weights.attention_key_bias,
+        &layer_weights.attention_value_weight,
+        &layer_weights.attention_value_bias,
+        attention_mask,
+        config,
+    )?;
+
+    // Attention output projection
+    let attention_output = bert_attention_output(
+        &attention_output,
+        hidden_states,
+        &layer_weights.attention_output_dense_weight,
+        &layer_weights.attention_output_dense_bias,
+        &layer_weights.attention_output_layer_norm_weight,
+        &layer_weights.attention_output_layer_norm_bias,
+        config,
+    )?;
+
+    // Intermediate
+    let intermediate_output = bert_intermediate(
+        &attention_output,
+        &layer_weights.intermediate_dense_weight,
+        &layer_weights.intermediate_dense_bias,
+    )?;
+
+    // Output
+    bert_output(
+        &intermediate_output,
+        &attention_output,
+        &layer_weights.output_dense_weight,
+        &layer_weights.output_dense_bias,
+        &layer_weights.output_layer_norm_weight,
+        &layer_weights.output_layer_norm_bias,
+        config,
+    )
+}
+
+/// BERT pooler - extracts the [CLS] token representation.
+pub fn bert_pooler(
+    hidden_states: &Array,
+    pooler_dense_weight: &Array,
+    pooler_dense_bias: &Array,
+) -> Result<Array> {
+    // Take the first token ([CLS]) representation
+    let shape = hidden_states.shape();
+    let batch_size = shape[0] as i32;
+    let hidden_size = shape[2] as i32;
+
+    // Slice to get first token: hidden_states[:, 0, :]
+    let first_token = hidden_states.slice(&[0, 0, 0], &[batch_size, 1, hidden_size], None)?;
+    let first_token = first_token.reshape(&[batch_size, hidden_size])?;
+
+    // Dense + tanh
+    let pooled = first_token.matmul(pooler_dense_weight)?;
+    let pooled = &pooled + pooler_dense_bias;
+    tanh(&pooled)
+}
+
+/// Create an attention mask for BERT.
+///
+/// Converts a padding mask (1 for real tokens, 0 for padding) to an attention mask
+/// with 0 for real tokens and -inf for padding.
+pub fn create_bert_attention_mask(attention_mask: &Array) -> Result<Array> {
+    // attention_mask: (batch, seq_len) with 1 for real tokens, 0 for padding
+    // output: (batch, 1, 1, seq_len) with 0 for real tokens, -inf for padding
+
+    let shape = attention_mask.shape();
+    let batch_size = shape[0] as i32;
+    let seq_len = shape[1] as i32;
+
+    // Reshape to (batch, 1, 1, seq_len)
+    let mask = attention_mask.reshape(&[batch_size, 1, 1, seq_len])?;
+
+    // Convert: (1 - mask) * -10000.0
+    // Where mask is 1, result is 0; where mask is 0, result is -10000
+    let ones = Array::ones::<f32>(&[1])?;
+    let inverted = &ones - &mask;
+    let neg_inf = Array::from_float(-10000.0f32);
+    Ok(&inverted * &neg_inf)
+}
+
+/// Weights for a single BERT transformer layer.
+#[derive(Debug)]
+pub struct BertLayerWeights {
+    // Self-attention
+    pub attention_query_weight: Array,
+    pub attention_query_bias: Array,
+    pub attention_key_weight: Array,
+    pub attention_key_bias: Array,
+    pub attention_value_weight: Array,
+    pub attention_value_bias: Array,
+    // Attention output
+    pub attention_output_dense_weight: Array,
+    pub attention_output_dense_bias: Array,
+    pub attention_output_layer_norm_weight: Array,
+    pub attention_output_layer_norm_bias: Array,
+    // Intermediate (FFN part 1)
+    pub intermediate_dense_weight: Array,
+    pub intermediate_dense_bias: Array,
+    // Output (FFN part 2)
+    pub output_dense_weight: Array,
+    pub output_dense_bias: Array,
+    pub output_layer_norm_weight: Array,
+    pub output_layer_norm_bias: Array,
+}
+
+impl BertLayerWeights {
+    /// Initialize random weights for testing.
+    pub fn random(config: &BertConfig) -> Result<Self> {
+        let hidden = config.hidden_size;
+        let intermediate = config.intermediate_size;
+
+        Ok(Self {
+            attention_query_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_query_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_key_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_key_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_value_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_value_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_output_dense_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_output_dense_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_output_layer_norm_weight: Array::ones::<f32>(&[hidden])?,
+            attention_output_layer_norm_bias: Array::zeros::<f32>(&[hidden])?,
+            intermediate_dense_weight: crate::random::normal_with_params::<f32>(&[hidden, intermediate], 0.0, 0.02, None)?,
+            intermediate_dense_bias: Array::zeros::<f32>(&[intermediate])?,
+            output_dense_weight: crate::random::normal_with_params::<f32>(&[intermediate, hidden], 0.0, 0.02, None)?,
+            output_dense_bias: Array::zeros::<f32>(&[hidden])?,
+            output_layer_norm_weight: Array::ones::<f32>(&[hidden])?,
+            output_layer_norm_bias: Array::zeros::<f32>(&[hidden])?,
+        })
+    }
+}
+
+/// Full BERT model weights.
+#[derive(Debug)]
+pub struct BertWeights {
+    // Embeddings
+    pub word_embeddings: Array,
+    pub position_embeddings: Array,
+    pub token_type_embeddings: Array,
+    pub embeddings_layer_norm_weight: Array,
+    pub embeddings_layer_norm_bias: Array,
+    // Transformer layers
+    pub layers: Vec<BertLayerWeights>,
+    // Pooler
+    pub pooler_dense_weight: Array,
+    pub pooler_dense_bias: Array,
+}
+
+impl BertWeights {
+    /// Initialize random weights for testing.
+    pub fn random(config: &BertConfig) -> Result<Self> {
+        let vocab = config.vocab_size;
+        let hidden = config.hidden_size;
+        let max_pos = config.max_position_embeddings;
+        let type_vocab = config.type_vocab_size;
+
+        let mut layers = Vec::with_capacity(config.num_hidden_layers as usize);
+        for _ in 0..config.num_hidden_layers {
+            layers.push(BertLayerWeights::random(config)?);
+        }
+
+        Ok(Self {
+            word_embeddings: crate::random::normal_with_params::<f32>(&[vocab, hidden], 0.0, 0.02, None)?,
+            position_embeddings: crate::random::normal_with_params::<f32>(&[max_pos, hidden], 0.0, 0.02, None)?,
+            token_type_embeddings: crate::random::normal_with_params::<f32>(&[type_vocab, hidden], 0.0, 0.02, None)?,
+            embeddings_layer_norm_weight: Array::ones::<f32>(&[hidden])?,
+            embeddings_layer_norm_bias: Array::zeros::<f32>(&[hidden])?,
+            layers,
+            pooler_dense_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            pooler_dense_bias: Array::zeros::<f32>(&[hidden])?,
+        })
+    }
+}
+
+/// BERT Model
+///
+/// Complete BERT model implementation for embeddings, classification, and NLU tasks.
+///
+/// # Example
+/// ```ignore
+/// use mlx_rs::nn::{BertConfig, BertModel, BertWeights};
+///
+/// let config = BertConfig::bert_base_uncased();
+/// let weights = BertWeights::random(&config)?;
+/// let model = BertModel::new(config);
+///
+/// let input_ids = Array::from_slice(&[101i32, 2054, 2003, 2023, 102], &[1, 5])?;
+/// let (last_hidden, pooled) = model.forward(&input_ids, None, None, &weights)?;
+/// ```
+pub struct BertModel {
+    pub config: BertConfig,
+}
+
+impl BertModel {
+    /// Create a new BERT model.
+    pub fn new(config: BertConfig) -> Self {
+        Self { config }
+    }
+
+    /// Forward pass.
+    ///
+    /// # Arguments
+    /// * `input_ids` - Token IDs of shape (batch, seq_len)
+    /// * `token_type_ids` - Optional segment IDs of shape (batch, seq_len)
+    /// * `attention_mask` - Optional attention mask (1 for real tokens, 0 for padding)
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// A tuple of (last_hidden_state, pooled_output)
+    /// - last_hidden_state: (batch, seq_len, hidden_size)
+    /// - pooled_output: (batch, hidden_size) - [CLS] representation
+    pub fn forward(
+        &self,
+        input_ids: &Array,
+        token_type_ids: Option<&Array>,
+        attention_mask: Option<&Array>,
+        weights: &BertWeights,
+    ) -> Result<(Array, Array)> {
+        let shape = input_ids.shape();
+        if shape.len() != 2 {
+            return Err(Error::InvalidShape("Expected 2D input_ids (batch, seq_len)".into()));
+        }
+
+        // Embeddings
+        let hidden_states = bert_embeddings(
+            input_ids,
+            token_type_ids,
+            None,
+            &weights.word_embeddings,
+            &weights.position_embeddings,
+            &weights.token_type_embeddings,
+            &weights.embeddings_layer_norm_weight,
+            &weights.embeddings_layer_norm_bias,
+            &self.config,
+        )?;
+
+        // Create extended attention mask if provided
+        let extended_attention_mask = attention_mask
+            .map(|mask| create_bert_attention_mask(mask))
+            .transpose()?;
+
+        // Apply transformer layers
+        let mut hidden_states = hidden_states;
+        for layer_weights in &weights.layers {
+            hidden_states = bert_layer(
+                &hidden_states,
+                layer_weights,
+                extended_attention_mask.as_ref(),
+                &self.config,
+            )?;
+        }
+
+        // Pooler
+        let pooled_output = bert_pooler(
+            &hidden_states,
+            &weights.pooler_dense_weight,
+            &weights.pooler_dense_bias,
+        )?;
+
+        Ok((hidden_states, pooled_output))
+    }
+
+    /// Get embeddings for the input (last hidden state).
+    ///
+    /// # Returns
+    /// last_hidden_state: (batch, seq_len, hidden_size)
+    pub fn encode(
+        &self,
+        input_ids: &Array,
+        token_type_ids: Option<&Array>,
+        attention_mask: Option<&Array>,
+        weights: &BertWeights,
+    ) -> Result<Array> {
+        let (last_hidden_state, _) = self.forward(input_ids, token_type_ids, attention_mask, weights)?;
+        Ok(last_hidden_state)
+    }
+
+    /// Get the [CLS] token embedding (pooled output).
+    ///
+    /// This is commonly used for classification tasks.
+    ///
+    /// # Returns
+    /// pooled_output: (batch, hidden_size)
+    pub fn get_pooled_output(
+        &self,
+        input_ids: &Array,
+        token_type_ids: Option<&Array>,
+        attention_mask: Option<&Array>,
+        weights: &BertWeights,
+    ) -> Result<Array> {
+        let (_, pooled_output) = self.forward(input_ids, token_type_ids, attention_mask, weights)?;
+        Ok(pooled_output)
+    }
+
+    /// Get mean-pooled embeddings (average of all token embeddings).
+    ///
+    /// This is often used for sentence embeddings.
+    ///
+    /// # Returns
+    /// mean_pooled: (batch, hidden_size)
+    pub fn get_mean_pooled(
+        &self,
+        input_ids: &Array,
+        token_type_ids: Option<&Array>,
+        attention_mask: Option<&Array>,
+        weights: &BertWeights,
+    ) -> Result<Array> {
+        let (last_hidden_state, _) = self.forward(input_ids, token_type_ids, attention_mask, weights)?;
+
+        // Mean pooling over sequence dimension
+        if let Some(mask) = attention_mask {
+            // Masked mean pooling
+            let shape = last_hidden_state.shape();
+            let hidden_size = shape[2] as i32;
+
+            // Expand mask to hidden dim
+            let mask_expanded = mask.reshape(&[shape[0] as i32, shape[1] as i32, 1])?;
+            let mask_expanded = broadcast_to(&mask_expanded, &[shape[0] as i32, shape[1] as i32, hidden_size])?;
+
+            // Mask and sum
+            let masked = &last_hidden_state * &mask_expanded;
+            let sum = masked.sum_axes(&[1], false)?;
+
+            // Count non-padding tokens per batch
+            let counts = mask.sum_axes(&[1], true)?;
+            let counts = counts.reshape(&[shape[0] as i32, 1])?;
+
+            // Clamp counts to at least 1 to avoid division by zero
+            // Use where_cond: if counts < 1, use 1, else use counts
+            let one = Array::from_float(1.0f32);
+            let condition = counts.lt(&one)?;
+            let counts = crate::ops::where_cond(&condition, &one, &counts)?;
+
+            Ok(&sum / &counts)
+        } else {
+            // Simple mean over sequence: sum / seq_len
+            let shape = last_hidden_state.shape();
+            let seq_len = shape[1] as f32;
+            let sum = last_hidden_state.sum_axes(&[1], false)?;
+            let seq_len_arr = Array::from_float(seq_len);
+            Ok(&sum / &seq_len_arr)
+        }
+    }
+}

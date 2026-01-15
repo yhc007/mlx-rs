@@ -9,6 +9,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **Neural Network Layers**: Activations, normalization, attention, convolution, pooling, dropout
 - **Optimizers**: SGD, Adam, AdamW, RMSprop with full configuration options
 - **Llama Model**: Complete implementation with GQA support for Llama 2/3 architectures
+- **BERT Model**: Encoder-only transformer for embeddings, classification, NLU tasks
 - **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
 - **Learning Rate Schedulers**: StepLR, CosineAnnealing, WarmupCosine, OneCycleLR, and more
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
@@ -176,6 +177,31 @@ let logits = model.forward(&input_ids, &weights).unwrap();
 let output_ids = model.generate(&input_ids, &weights, 100, 0.8).unwrap();
 ```
 
+### BERT Model
+
+```rust
+use mlx_rs::nn::{BertConfig, BertModel, BertWeights};
+
+// Use preset configuration
+let config = BertConfig::bert_base_uncased();
+
+// Or customize
+let config = BertConfig::new()
+    .hidden_size(768)
+    .num_hidden_layers(12)
+    .num_attention_heads(12);
+
+// Create model
+let model = BertModel::new(config);
+
+// Forward pass - returns (last_hidden_state, pooled_output)
+let (hidden, pooled) = model.forward(&input_ids, None, None, &weights).unwrap();
+
+// Different pooling strategies
+let cls_embedding = model.get_pooled_output(&input_ids, None, None, &weights).unwrap();
+let mean_embedding = model.get_mean_pooled(&input_ids, None, None, &weights).unwrap();
+```
+
 ### Serialization
 
 ```rust
@@ -276,6 +302,7 @@ cargo run --example neural_network  # NN layers, activations, attention
 cargo run --example autodiff        # Gradients, VJP, JVP
 cargo run --example optimizer       # SGD, Adam, AdamW, RMSprop
 cargo run --example llama           # Llama model architecture
+cargo run --example bert            # BERT model for embeddings
 cargo run --example serialization   # Load/save safetensors, npy, npz
 cargo run --example scheduler       # Learning rate schedulers
 ```
