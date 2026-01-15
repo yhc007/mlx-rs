@@ -4,7 +4,7 @@
 //!
 //! Run with: cargo run --example autodiff
 
-use mlx_rs::{Array, transforms, nn};
+use mlx_rs::{Array, transforms};
 
 fn main() -> mlx_rs::error::Result<()> {
     println!("=== MLX-RS Automatic Differentiation ===\n");
@@ -16,13 +16,16 @@ fn main() -> mlx_rs::error::Result<()> {
     println!("------------------------------");
 
     // f(x) = x^2, df/dx = 2x
+    // Note: grad requires scalar output, so we use sum_all to reduce to scalar
     let f_square = |inputs: &[Array]| -> Vec<Array> {
         let x = &inputs[0];
-        vec![x * x]
+        let sq = x * x;
+        vec![sq.sum_all(false).unwrap()]
     };
 
     let x = Array::from_slice(&[3.0f32], &[1])?;
-    let grads = transforms::grad(f_square, &[x.clone()])?;
+    // argnums specifies which inputs to compute gradients for (here: input 0)
+    let grads = transforms::grad(f_square, &[x.clone()], &[0])?;
 
     grads[0].eval();
     println!("x = 3.0");
@@ -36,7 +39,7 @@ fn main() -> mlx_rs::error::Result<()> {
     println!("------------------------------");
 
     let x = Array::from_slice(&[2.0f32], &[1])?;
-    let (values, grads) = transforms::value_and_grad(f_square, &[x.clone()])?;
+    let (values, grads) = transforms::value_and_grad(f_square, &[x.clone()], &[0])?;
 
     values[0].eval();
     grads[0].eval();
@@ -55,11 +58,12 @@ fn main() -> mlx_rs::error::Result<()> {
     let f_sinx = |inputs: &[Array]| -> Vec<Array> {
         let x = &inputs[0];
         let sin_x = x.sin().unwrap();
-        vec![&sin_x * x]
+        let result = &sin_x * x;
+        vec![result.sum_all(false).unwrap()]
     };
 
     let x = Array::from_slice(&[std::f32::consts::PI / 4.0], &[1])?;
-    let (values, grads) = transforms::value_and_grad(f_sinx, &[x.clone()])?;
+    let (values, grads) = transforms::value_and_grad(f_sinx, &[x.clone()], &[0])?;
 
     values[0].eval();
     grads[0].eval();
@@ -84,12 +88,14 @@ fn main() -> mlx_rs::error::Result<()> {
     let f_multi = |inputs: &[Array]| -> Vec<Array> {
         let x = &inputs[0];
         let y = &inputs[1];
-        vec![x * y + x * x]
+        let result = x * y + x * x;
+        vec![result.sum_all(false).unwrap()]
     };
 
     let x = Array::from_slice(&[2.0f32], &[1])?;
     let y = Array::from_slice(&[3.0f32], &[1])?;
-    let grads = transforms::grad(f_multi, &[x.clone(), y.clone()])?;
+    // argnums &[0, 1] means compute gradients w.r.t. both x and y
+    let grads = transforms::grad(f_multi, &[x.clone(), y.clone()], &[0, 1])?;
 
     grads[0].eval();
     grads[1].eval();
@@ -178,7 +184,8 @@ fn main() -> mlx_rs::error::Result<()> {
     let x = Array::from_slice(&[1.0f32, 2.0], &[2, 1])?;
     let target = Array::from_slice(&[2.0f32, 3.0], &[2, 1])?;
 
-    let (values, grads) = transforms::value_and_grad(loss_fn, &[w.clone(), x.clone(), target.clone()])?;
+    // Compute gradients only w.r.t. weights (input 0), not x or target
+    let (values, grads) = transforms::value_and_grad(loss_fn, &[w.clone(), x.clone(), target.clone()], &[0])?;
 
     values[0].eval();
     grads[0].eval();
@@ -200,14 +207,16 @@ fn main() -> mlx_rs::error::Result<()> {
     let f_stop = |inputs: &[Array]| -> Vec<Array> {
         let x = &inputs[0];
         let y = &inputs[1];
-        let y_stopped = transforms::stop_gradient(y);
-        vec![x * &y_stopped + y]
+        // stop_gradient returns Result, unwrap it here
+        let y_stopped = transforms::stop_gradient(y).unwrap();
+        let result = x * &y_stopped + y;
+        vec![result.sum_all(false).unwrap()]
     };
 
     let x = Array::from_slice(&[2.0f32], &[1])?;
     let y = Array::from_slice(&[3.0f32], &[1])?;
 
-    let grads = transforms::grad(f_stop, &[x.clone(), y.clone()])?;
+    let grads = transforms::grad(f_stop, &[x.clone(), y.clone()], &[0, 1])?;
     grads[0].eval();
     grads[1].eval();
 

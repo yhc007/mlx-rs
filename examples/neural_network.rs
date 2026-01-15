@@ -156,12 +156,15 @@ fn main() -> mlx_rs::error::Result<()> {
     println!("\n7. Scaled Dot-Product Attention");
     println!("--------------------------------");
 
+    let batch = 1;
+    let num_heads = 2;
     let seq_len = 4;
     let head_dim = 8;
 
-    let q = random::normal_with_params::<f32>(&[1, seq_len, head_dim], 0.0, 0.1, None)?;
-    let k = random::normal_with_params::<f32>(&[1, seq_len, head_dim], 0.0, 0.1, None)?;
-    let v = random::normal_with_params::<f32>(&[1, seq_len, head_dim], 0.0, 0.1, None)?;
+    // Attention expects 4D: (batch, num_heads, seq_len, head_dim)
+    let q = random::normal_with_params::<f32>(&[batch, num_heads, seq_len, head_dim], 0.0, 0.1, None)?;
+    let k = random::normal_with_params::<f32>(&[batch, num_heads, seq_len, head_dim], 0.0, 0.1, None)?;
+    let v = random::normal_with_params::<f32>(&[batch, num_heads, seq_len, head_dim], 0.0, 0.1, None)?;
 
     // Standard attention
     let attn = nn::scaled_dot_product_attention(&q, &k, &v, None, nn::AttentionMask::None, None)?;
