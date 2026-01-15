@@ -4034,4 +4034,123 @@ mod tests {
 
         assert_eq!(logits.shape(), vec![2, 4, 500]);
     }
+
+    // =========================================================================
+    // GPT-2 Model Tests
+    // =========================================================================
+
+    #[test]
+    fn test_gpt2_config() {
+        use nn::GPT2Config;
+
+        // Test presets
+        let small = GPT2Config::gpt2_small();
+        assert_eq!(small.n_embd, 768);
+        assert_eq!(small.n_layer, 12);
+        assert_eq!(small.n_head, 12);
+
+        let medium = GPT2Config::gpt2_medium();
+        assert_eq!(medium.n_embd, 1024);
+        assert_eq!(medium.n_layer, 24);
+        assert_eq!(medium.n_head, 16);
+
+        let large = GPT2Config::gpt2_large();
+        assert_eq!(large.n_embd, 1280);
+        assert_eq!(large.n_layer, 36);
+        assert_eq!(large.n_head, 20);
+
+        let xl = GPT2Config::gpt2_xl();
+        assert_eq!(xl.n_embd, 1600);
+        assert_eq!(xl.n_layer, 48);
+        assert_eq!(xl.n_head, 25);
+
+        // Test custom config
+        let custom = GPT2Config::new()
+            .vocab_size(1000)
+            .n_positions(128)
+            .n_embd(64)
+            .n_layer(2)
+            .n_head(4);
+
+        assert_eq!(custom.vocab_size, 1000);
+        assert_eq!(custom.n_positions, 128);
+        assert_eq!(custom.n_embd, 64);
+        assert_eq!(custom.head_dim(), 16);
+        assert_eq!(custom.intermediate_size(), 256);
+    }
+
+    #[test]
+    fn test_gpt2_forward() {
+        use nn::{GPT2Config, GPT2Model, GPT2Weights};
+
+        let config = GPT2Config::new()
+            .vocab_size(1000)
+            .n_positions(64)
+            .n_embd(64)
+            .n_layer(2)
+            .n_head(4);
+
+        let weights = GPT2Weights::random(&config).unwrap();
+        let model = GPT2Model::new(config);
+
+        // Token IDs: (batch, seq_len)
+        let tokens = Array::from_slice(&[1i32, 2, 3, 4, 5], &[1, 5]).unwrap();
+
+        let logits = model.forward(&tokens, &weights).unwrap();
+        logits.eval();
+
+        // Output shape: (batch, seq_len, vocab_size)
+        assert_eq!(logits.shape(), vec![1, 5, 1000]);
+    }
+
+    #[test]
+    fn test_gpt2_generate() {
+        use nn::{GPT2Config, GPT2Model, GPT2Weights};
+
+        let config = GPT2Config::new()
+            .vocab_size(100)
+            .n_positions(32)
+            .n_embd(32)
+            .n_layer(1)
+            .n_head(2);
+
+        let weights = GPT2Weights::random(&config).unwrap();
+        let model = GPT2Model::new(config);
+
+        // Initial tokens
+        let tokens = Array::from_slice(&[1i32, 2, 3], &[1, 3]).unwrap();
+
+        // Generate 5 new tokens
+        let output = model.generate(&tokens, &weights, 5, 1.0).unwrap();
+        output.eval();
+
+        // Output shape: (batch, initial_len + new_tokens)
+        assert_eq!(output.shape(), vec![1, 8]);
+    }
+
+    #[test]
+    fn test_gpt2_batch() {
+        use nn::{GPT2Config, GPT2Model, GPT2Weights};
+
+        let config = GPT2Config::new()
+            .vocab_size(500)
+            .n_positions(32)
+            .n_embd(32)
+            .n_layer(1)
+            .n_head(2);
+
+        let weights = GPT2Weights::random(&config).unwrap();
+        let model = GPT2Model::new(config);
+
+        // Batch of 2 sequences
+        let tokens = Array::from_slice(&[
+            1i32, 2, 3, 4,
+            5, 6, 7, 8,
+        ], &[2, 4]).unwrap();
+
+        let logits = model.forward(&tokens, &weights).unwrap();
+        logits.eval();
+
+        assert_eq!(logits.shape(), vec![2, 4, 500]);
+    }
 }

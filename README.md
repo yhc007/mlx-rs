@@ -12,6 +12,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **BERT Model**: Encoder-only transformer for embeddings, classification, NLU tasks
 - **Vision Transformer (ViT)**: Image classification with patch-based attention
 - **Whisper Model**: Speech recognition with encoder-decoder transformer
+- **GPT-2 Model**: Decoder-only transformer for text generation
 - **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
 - **Learning Rate Schedulers**: StepLR, CosineAnnealing, WarmupCosine, OneCycleLR, and more
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
@@ -263,6 +264,32 @@ let logits = model.decode(&tokens, &audio_features, &weights).unwrap();
 let logits = model.forward(&mel, &tokens, &weights).unwrap();
 ```
 
+### GPT-2 Model
+
+```rust
+use mlx_rs::nn::{GPT2Config, GPT2Model, GPT2Weights};
+
+// Use preset configuration
+let config = GPT2Config::gpt2_small();
+
+// Or customize
+let config = GPT2Config::new()
+    .vocab_size(50257)
+    .n_positions(1024)
+    .n_embd(768)
+    .n_layer(12)
+    .n_head(12);
+
+// Create model
+let model = GPT2Model::new(config);
+
+// Forward pass
+let logits = model.forward(&input_ids, &weights).unwrap();
+
+// Text generation with temperature
+let output_ids = model.generate(&input_ids, &weights, 50, 0.8).unwrap();
+```
+
 ### Serialization
 
 ```rust
@@ -366,6 +393,7 @@ cargo run --example llama           # Llama model architecture
 cargo run --example bert            # BERT model for embeddings
 cargo run --example vit             # Vision Transformer for images
 cargo run --example whisper         # Whisper speech recognition
+cargo run --example gpt2            # GPT-2 text generation
 cargo run --example serialization   # Load/save safetensors, npy, npz
 cargo run --example scheduler       # Learning rate schedulers
 ```

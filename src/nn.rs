@@ -7799,3 +7799,502 @@ impl WhisperModel {
         &self.config
     }
 }
+
+// =============================================================================
+// GPT-2 Model (Text Generation)
+// =============================================================================
+
+/// Configuration for GPT-2 model.
+///
+/// GPT-2 is a decoder-only transformer for autoregressive text generation.
+///
+/// # Example
+///
+/// ```ignore
+/// use mlx_rs::nn::GPT2Config;
+///
+/// // Use a preset configuration
+/// let config = GPT2Config::gpt2_small();
+///
+/// // Or customize
+/// let config = GPT2Config::new()
+///     .vocab_size(50257)
+///     .n_positions(1024)
+///     .n_embd(768)
+///     .n_layer(12)
+///     .n_head(12);
+/// ```
+#[derive(Debug, Clone)]
+pub struct GPT2Config {
+    /// Vocabulary size (default: 50257 for GPT-2)
+    pub vocab_size: i32,
+    /// Maximum sequence length (default: 1024)
+    pub n_positions: i32,
+    /// Embedding dimension / hidden size
+    pub n_embd: i32,
+    /// Number of transformer layers
+    pub n_layer: i32,
+    /// Number of attention heads
+    pub n_head: i32,
+    /// Dropout probability (default: 0.1)
+    pub dropout: f32,
+    /// Layer norm epsilon (default: 1e-5)
+    pub layer_norm_eps: f32,
+}
+
+impl GPT2Config {
+    /// Create a new GPT2Config with default values (small size).
+    pub fn new() -> Self {
+        Self {
+            vocab_size: 50257,
+            n_positions: 1024,
+            n_embd: 768,
+            n_layer: 12,
+            n_head: 12,
+            dropout: 0.1,
+            layer_norm_eps: 1e-5,
+        }
+    }
+
+    /// GPT-2 Small configuration (117M parameters).
+    pub fn gpt2_small() -> Self {
+        Self::new()
+    }
+
+    /// GPT-2 Medium configuration (345M parameters).
+    pub fn gpt2_medium() -> Self {
+        Self {
+            vocab_size: 50257,
+            n_positions: 1024,
+            n_embd: 1024,
+            n_layer: 24,
+            n_head: 16,
+            dropout: 0.1,
+            layer_norm_eps: 1e-5,
+        }
+    }
+
+    /// GPT-2 Large configuration (774M parameters).
+    pub fn gpt2_large() -> Self {
+        Self {
+            vocab_size: 50257,
+            n_positions: 1024,
+            n_embd: 1280,
+            n_layer: 36,
+            n_head: 20,
+            dropout: 0.1,
+            layer_norm_eps: 1e-5,
+        }
+    }
+
+    /// GPT-2 XL configuration (1.5B parameters).
+    pub fn gpt2_xl() -> Self {
+        Self {
+            vocab_size: 50257,
+            n_positions: 1024,
+            n_embd: 1600,
+            n_layer: 48,
+            n_head: 25,
+            dropout: 0.1,
+            layer_norm_eps: 1e-5,
+        }
+    }
+
+    // Builder methods
+    pub fn vocab_size(mut self, vocab_size: i32) -> Self {
+        self.vocab_size = vocab_size;
+        self
+    }
+
+    pub fn n_positions(mut self, n_positions: i32) -> Self {
+        self.n_positions = n_positions;
+        self
+    }
+
+    pub fn n_embd(mut self, n_embd: i32) -> Self {
+        self.n_embd = n_embd;
+        self
+    }
+
+    pub fn n_layer(mut self, n_layer: i32) -> Self {
+        self.n_layer = n_layer;
+        self
+    }
+
+    pub fn n_head(mut self, n_head: i32) -> Self {
+        self.n_head = n_head;
+        self
+    }
+
+    pub fn dropout_prob(mut self, dropout: f32) -> Self {
+        self.dropout = dropout;
+        self
+    }
+
+    pub fn layer_norm_eps(mut self, eps: f32) -> Self {
+        self.layer_norm_eps = eps;
+        self
+    }
+
+    /// Get the head dimension.
+    pub fn head_dim(&self) -> i32 {
+        self.n_embd / self.n_head
+    }
+
+    /// Get the intermediate size (4x hidden for GPT-2).
+    pub fn intermediate_size(&self) -> i32 {
+        self.n_embd * 4
+    }
+}
+
+impl Default for GPT2Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Weights for a single GPT-2 transformer block.
+#[derive(Debug, Clone)]
+pub struct GPT2BlockWeights {
+    /// Layer norm 1 weight (before attention)
+    pub ln_1_weight: Array,
+    /// Layer norm 1 bias
+    pub ln_1_bias: Array,
+    /// Attention query/key/value combined weight
+    pub attn_c_attn_weight: Array,
+    /// Attention query/key/value combined bias
+    pub attn_c_attn_bias: Array,
+    /// Attention output projection weight
+    pub attn_c_proj_weight: Array,
+    /// Attention output projection bias
+    pub attn_c_proj_bias: Array,
+    /// Layer norm 2 weight (before MLP)
+    pub ln_2_weight: Array,
+    /// Layer norm 2 bias
+    pub ln_2_bias: Array,
+    /// MLP first linear weight
+    pub mlp_c_fc_weight: Array,
+    /// MLP first linear bias
+    pub mlp_c_fc_bias: Array,
+    /// MLP second linear weight
+    pub mlp_c_proj_weight: Array,
+    /// MLP second linear bias
+    pub mlp_c_proj_bias: Array,
+}
+
+/// All weights for the GPT-2 model.
+#[derive(Debug, Clone)]
+pub struct GPT2Weights {
+    /// Token embeddings
+    pub wte: Array,
+    /// Position embeddings
+    pub wpe: Array,
+    /// Transformer block weights
+    pub blocks: Vec<GPT2BlockWeights>,
+    /// Final layer norm weight
+    pub ln_f_weight: Array,
+    /// Final layer norm bias
+    pub ln_f_bias: Array,
+}
+
+impl GPT2Weights {
+    /// Create random weights for testing.
+    pub fn random(config: &GPT2Config) -> Result<Self> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let scale = 0.02f32;
+
+        let mut random_array = |shape: &[i32]| -> Result<Array> {
+            let size: i32 = shape.iter().product();
+            let data: Vec<f32> = (0..size).map(|_| rng.gen::<f32>() * scale - scale / 2.0).collect();
+            Array::from_slice(&data, shape)
+        };
+
+        // Embeddings
+        let wte = random_array(&[config.vocab_size, config.n_embd])?;
+        let wpe = random_array(&[config.n_positions, config.n_embd])?;
+
+        // Transformer blocks
+        let mut blocks = Vec::new();
+        for _ in 0..config.n_layer {
+            blocks.push(GPT2BlockWeights {
+                ln_1_weight: random_array(&[config.n_embd])?,
+                ln_1_bias: random_array(&[config.n_embd])?,
+                // Combined QKV projection: n_embd -> 3 * n_embd
+                attn_c_attn_weight: random_array(&[config.n_embd, 3 * config.n_embd])?,
+                attn_c_attn_bias: random_array(&[3 * config.n_embd])?,
+                attn_c_proj_weight: random_array(&[config.n_embd, config.n_embd])?,
+                attn_c_proj_bias: random_array(&[config.n_embd])?,
+                ln_2_weight: random_array(&[config.n_embd])?,
+                ln_2_bias: random_array(&[config.n_embd])?,
+                mlp_c_fc_weight: random_array(&[config.n_embd, config.intermediate_size()])?,
+                mlp_c_fc_bias: random_array(&[config.intermediate_size()])?,
+                mlp_c_proj_weight: random_array(&[config.intermediate_size(), config.n_embd])?,
+                mlp_c_proj_bias: random_array(&[config.n_embd])?,
+            });
+        }
+
+        // Final layer norm
+        let ln_f_weight = random_array(&[config.n_embd])?;
+        let ln_f_bias = random_array(&[config.n_embd])?;
+
+        Ok(Self {
+            wte,
+            wpe,
+            blocks,
+            ln_f_weight,
+            ln_f_bias,
+        })
+    }
+}
+
+/// GPT-2 causal self-attention.
+fn gpt2_attention(
+    x: &Array,
+    weights: &GPT2BlockWeights,
+    config: &GPT2Config,
+    mask: &Array,
+) -> Result<Array> {
+    let shape = x.shape();
+    let batch_size = shape[0];
+    let seq_len = shape[1];
+    let n_head = config.n_head;
+    let head_dim = config.head_dim();
+
+    // Combined QKV projection
+    let qkv = x.matmul(&weights.attn_c_attn_weight)?;
+    let qkv = &qkv + &weights.attn_c_attn_bias;
+
+    // Split into Q, K, V
+    let q = qkv.slice(&[0, 0, 0], &[batch_size, seq_len, config.n_embd], None)?;
+    let k = qkv.slice(&[0, 0, config.n_embd], &[batch_size, seq_len, 2 * config.n_embd], None)?;
+    let v = qkv.slice(&[0, 0, 2 * config.n_embd], &[batch_size, seq_len, 3 * config.n_embd], None)?;
+
+    // Reshape for multi-head attention: (batch, seq, n_head, head_dim) -> (batch, n_head, seq, head_dim)
+    let q = q.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let k = k.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let v = v.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+
+    // Scaled dot-product attention
+    let scale = Array::from_float((head_dim as f32).sqrt());
+    let attn_weights = q.matmul(&k.transpose_axes(&[0, 1, 3, 2])?)?;
+    let attn_weights = &attn_weights / &scale;
+
+    // Apply causal mask
+    let attn_weights = &attn_weights + mask;
+    let attn_weights = softmax(&attn_weights, -1)?;
+
+    let attn_output = attn_weights.matmul(&v)?;
+
+    // Reshape back: (batch, n_head, seq, head_dim) -> (batch, seq, n_embd)
+    let attn_output = attn_output.transpose_axes(&[0, 2, 1, 3])?;
+    let attn_output = attn_output.reshape(&[batch_size, seq_len, config.n_embd])?;
+
+    // Output projection
+    let attn_output = attn_output.matmul(&weights.attn_c_proj_weight)?;
+    Ok(&attn_output + &weights.attn_c_proj_bias)
+}
+
+/// GPT-2 MLP (feed-forward network).
+fn gpt2_mlp(
+    x: &Array,
+    weights: &GPT2BlockWeights,
+) -> Result<Array> {
+    // First linear + GELU
+    let hidden = x.matmul(&weights.mlp_c_fc_weight)?;
+    let hidden = &hidden + &weights.mlp_c_fc_bias;
+    let hidden = gelu(&hidden)?;
+
+    // Second linear
+    let output = hidden.matmul(&weights.mlp_c_proj_weight)?;
+    Ok(&output + &weights.mlp_c_proj_bias)
+}
+
+/// Single GPT-2 transformer block.
+fn gpt2_block(
+    x: &Array,
+    weights: &GPT2BlockWeights,
+    config: &GPT2Config,
+    mask: &Array,
+) -> Result<Array> {
+    // Pre-norm architecture (GPT-2 style)
+    // Attention with residual
+    let ln_1 = layer_norm(x, &weights.ln_1_weight, &weights.ln_1_bias, config.layer_norm_eps)?;
+    let attn_out = gpt2_attention(&ln_1, weights, config, mask)?;
+    let x = x + &attn_out;
+
+    // MLP with residual
+    let ln_2 = layer_norm(&x, &weights.ln_2_weight, &weights.ln_2_bias, config.layer_norm_eps)?;
+    let mlp_out = gpt2_mlp(&ln_2, weights)?;
+    Ok(&x + &mlp_out)
+}
+
+/// GPT-2 model for text generation.
+///
+/// # Example
+///
+/// ```ignore
+/// use mlx_rs::nn::{GPT2Config, GPT2Model, GPT2Weights};
+/// use mlx_rs::Array;
+///
+/// let config = GPT2Config::gpt2_small();
+/// let weights = GPT2Weights::random(&config).unwrap();
+/// let model = GPT2Model::new(config);
+///
+/// // Forward pass with token IDs
+/// let tokens = Array::from_slice(&[15496i32, 11, 995], &[1, 3]).unwrap();
+/// let logits = model.forward(&tokens, &weights).unwrap();
+///
+/// // Text generation
+/// let output = model.generate(&tokens, &weights, 50, 0.8).unwrap();
+/// ```
+#[derive(Debug, Clone)]
+pub struct GPT2Model {
+    config: GPT2Config,
+}
+
+impl GPT2Model {
+    /// Create a new GPT-2 model with the given configuration.
+    pub fn new(config: GPT2Config) -> Self {
+        Self { config }
+    }
+
+    /// Create a causal attention mask.
+    fn create_causal_mask(&self, seq_len: i32) -> Result<Array> {
+        let neg_inf = f32::NEG_INFINITY;
+        let mut mask_data = vec![0.0f32; (seq_len * seq_len) as usize];
+
+        for i in 0..seq_len {
+            for j in 0..seq_len {
+                if j > i {
+                    mask_data[(i * seq_len + j) as usize] = neg_inf;
+                }
+            }
+        }
+
+        Array::from_slice(&mask_data, &[1, 1, seq_len, seq_len])
+    }
+
+    /// Forward pass through GPT-2.
+    ///
+    /// # Arguments
+    /// * `input_ids` - Token IDs of shape (batch, seq_len)
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// Logits of shape (batch, seq_len, vocab_size)
+    pub fn forward(&self, input_ids: &Array, weights: &GPT2Weights) -> Result<Array> {
+        let shape = input_ids.shape();
+        if shape.len() != 2 {
+            return Err(Error::InvalidShape("Expected 2D input (batch, seq_len)".into()));
+        }
+        let seq_len = shape[1];
+
+        if seq_len > self.config.n_positions {
+            return Err(Error::InvalidShape(format!(
+                "Sequence length {} exceeds max positions {}",
+                seq_len, self.config.n_positions
+            )));
+        }
+
+        // Token embeddings
+        let token_emb = embedding(&weights.wte, input_ids)?;
+
+        // Position embeddings
+        let positions = Array::arange::<i32>(0.0, seq_len as f64, 1.0)?;
+        let positions = positions.reshape(&[1, seq_len])?;
+        let pos_emb = embedding(&weights.wpe, &positions)?;
+
+        // Combine embeddings
+        let mut hidden = &token_emb + &pos_emb;
+
+        // Create causal mask
+        let mask = self.create_causal_mask(seq_len)?;
+
+        // Transformer blocks
+        for block_weights in &weights.blocks {
+            hidden = gpt2_block(&hidden, block_weights, &self.config, &mask)?;
+        }
+
+        // Final layer norm
+        let hidden = layer_norm(&hidden, &weights.ln_f_weight, &weights.ln_f_bias, self.config.layer_norm_eps)?;
+
+        // Project to vocabulary (weight tying with token embedding)
+        hidden.matmul(&weights.wte.transpose()?)
+    }
+
+    /// Generate text autoregressively.
+    ///
+    /// # Arguments
+    /// * `input_ids` - Initial token IDs of shape (batch, seq_len)
+    /// * `weights` - Model weights
+    /// * `max_new_tokens` - Maximum number of tokens to generate
+    /// * `temperature` - Sampling temperature (1.0 = no change, <1.0 = more deterministic)
+    ///
+    /// # Returns
+    /// Generated token IDs of shape (batch, seq_len + max_new_tokens)
+    pub fn generate(
+        &self,
+        input_ids: &Array,
+        weights: &GPT2Weights,
+        max_new_tokens: i32,
+        temperature: f32,
+    ) -> Result<Array> {
+        let shape = input_ids.shape();
+        if shape.len() != 2 {
+            return Err(Error::InvalidShape("Expected 2D input (batch, seq_len)".into()));
+        }
+        let batch_size = shape[0];
+        let mut current_len = shape[1];
+
+        // Start with input tokens
+        let mut all_tokens = input_ids.to_vec::<i32>()?;
+
+        for _ in 0..max_new_tokens {
+            if current_len >= self.config.n_positions {
+                break;
+            }
+
+            // Create current sequence
+            let current_tokens = Array::from_slice(&all_tokens, &[batch_size, current_len])?;
+
+            // Forward pass
+            let logits = self.forward(&current_tokens, weights)?;
+
+            // Get logits for the last position
+            let last_logits = logits.slice(
+                &[0, current_len - 1, 0],
+                &[batch_size, current_len, self.config.vocab_size],
+                None,
+            )?;
+            let last_logits = last_logits.reshape(&[batch_size, self.config.vocab_size])?;
+
+            // Apply temperature
+            let temp = Array::from_float(temperature);
+            let scaled_logits = &last_logits / &temp;
+
+            // Softmax to get probabilities
+            let probs = softmax(&scaled_logits, -1)?;
+
+            // Greedy decoding: argmax along last dimension
+            let next_token = probs.argmax_axis(-1, false)?;
+            next_token.eval();
+
+            // Append to all tokens (argmax returns UInt32, convert to i32)
+            let next_token_vec: Vec<i32> = next_token
+                .to_vec::<u32>()?
+                .into_iter()
+                .map(|x| x as i32)
+                .collect();
+            all_tokens.extend(next_token_vec);
+            current_len += 1;
+        }
+
+        Array::from_slice(&all_tokens, &[batch_size, current_len])
+    }
+
+    /// Get the configuration.
+    pub fn config(&self) -> &GPT2Config {
+        &self.config
+    }
+}
