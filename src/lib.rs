@@ -3854,4 +3854,184 @@ mod tests {
         let lr10 = sched.step();
         assert!((lr10 - 1.0).abs() < 1e-6);
     }
+
+    // =========================================================================
+    // Whisper Model Tests
+    // =========================================================================
+
+    #[test]
+    fn test_whisper_config() {
+        use nn::WhisperConfig;
+
+        // Test presets
+        let tiny = WhisperConfig::whisper_tiny();
+        assert_eq!(tiny.n_audio_state, 384);
+        assert_eq!(tiny.n_audio_layer, 4);
+        assert_eq!(tiny.n_text_state, 384);
+        assert_eq!(tiny.n_text_layer, 4);
+
+        let base = WhisperConfig::whisper_base();
+        assert_eq!(base.n_audio_state, 512);
+        assert_eq!(base.n_audio_layer, 6);
+
+        let small = WhisperConfig::whisper_small();
+        assert_eq!(small.n_audio_state, 768);
+        assert_eq!(small.n_audio_layer, 12);
+
+        let medium = WhisperConfig::whisper_medium();
+        assert_eq!(medium.n_audio_state, 1024);
+        assert_eq!(medium.n_audio_layer, 24);
+
+        let large = WhisperConfig::whisper_large();
+        assert_eq!(large.n_audio_state, 1280);
+        assert_eq!(large.n_audio_layer, 32);
+
+        let large_v3 = WhisperConfig::whisper_large_v3();
+        assert_eq!(large_v3.n_mels, 128);
+
+        // Test custom config
+        let custom = WhisperConfig::new()
+            .n_mels(80)
+            .n_audio_ctx(100)
+            .n_audio_state(256)
+            .n_audio_head(4)
+            .n_audio_layer(2)
+            .n_vocab(1000)
+            .n_text_ctx(50)
+            .n_text_state(256)
+            .n_text_head(4)
+            .n_text_layer(2);
+
+        assert_eq!(custom.n_mels, 80);
+        assert_eq!(custom.n_audio_ctx, 100);
+        assert_eq!(custom.n_audio_state, 256);
+        assert_eq!(custom.audio_head_dim(), 64);
+        assert_eq!(custom.text_head_dim(), 64);
+    }
+
+    #[test]
+    fn test_whisper_encode() {
+        use nn::{WhisperConfig, WhisperModel, WhisperWeights};
+
+        // Use small config for testing
+        let config = WhisperConfig::new()
+            .n_mels(40)
+            .n_audio_ctx(100)
+            .n_audio_state(64)
+            .n_audio_head(4)
+            .n_audio_layer(2);
+
+        let weights = WhisperWeights::random(&config).unwrap();
+        let model = WhisperModel::new(config.clone());
+
+        // Create dummy mel spectrogram: (batch, n_mels, n_frames)
+        let mel = Array::zeros::<f32>(&[1, 40, 100]).unwrap();
+
+        let audio_features = model.encode(&mel, &weights).unwrap();
+        audio_features.eval();
+
+        // After conv with stride=2, sequence length is halved
+        // Output shape: (batch, seq_len/2, n_audio_state)
+        let shape = audio_features.shape();
+        assert_eq!(shape[0], 1);
+        assert_eq!(shape[2], 64); // n_audio_state
+    }
+
+    #[test]
+    fn test_whisper_decode() {
+        use nn::{WhisperConfig, WhisperModel, WhisperWeights};
+
+        let config = WhisperConfig::new()
+            .n_mels(40)
+            .n_audio_ctx(100)
+            .n_audio_state(64)
+            .n_audio_head(4)
+            .n_audio_layer(2)
+            .n_vocab(1000)
+            .n_text_ctx(50)
+            .n_text_state(64)
+            .n_text_head(4)
+            .n_text_layer(2);
+
+        let weights = WhisperWeights::random(&config).unwrap();
+        let model = WhisperModel::new(config.clone());
+
+        // Create dummy audio features: (batch, audio_seq, n_audio_state)
+        let audio_features = Array::zeros::<f32>(&[1, 50, 64]).unwrap();
+
+        // Create dummy token IDs: (batch, seq_len)
+        let tokens = Array::from_slice(&[0i32, 1, 2, 3, 4], &[1, 5]).unwrap();
+
+        let logits = model.decode(&tokens, &audio_features, &weights).unwrap();
+        logits.eval();
+
+        // Output shape: (batch, seq_len, vocab_size)
+        assert_eq!(logits.shape(), vec![1, 5, 1000]);
+    }
+
+    #[test]
+    fn test_whisper_forward() {
+        use nn::{WhisperConfig, WhisperModel, WhisperWeights};
+
+        let config = WhisperConfig::new()
+            .n_mels(40)
+            .n_audio_ctx(100)
+            .n_audio_state(64)
+            .n_audio_head(4)
+            .n_audio_layer(2)
+            .n_vocab(1000)
+            .n_text_ctx(50)
+            .n_text_state(64)
+            .n_text_head(4)
+            .n_text_layer(2);
+
+        let weights = WhisperWeights::random(&config).unwrap();
+        let model = WhisperModel::new(config.clone());
+
+        // Mel spectrogram: (batch, n_mels, n_frames)
+        let mel = Array::zeros::<f32>(&[1, 40, 100]).unwrap();
+
+        // Token IDs
+        let tokens = Array::from_slice(&[0i32, 1, 2], &[1, 3]).unwrap();
+
+        let logits = model.forward(&mel, &tokens, &weights).unwrap();
+        logits.eval();
+
+        // Output shape: (batch, seq_len, vocab_size)
+        assert_eq!(logits.shape(), vec![1, 3, 1000]);
+    }
+
+    #[test]
+    fn test_whisper_batch() {
+        use nn::{WhisperConfig, WhisperModel, WhisperWeights};
+
+        let config = WhisperConfig::new()
+            .n_mels(40)
+            .n_audio_ctx(100)
+            .n_audio_state(64)
+            .n_audio_head(4)
+            .n_audio_layer(1)
+            .n_vocab(500)
+            .n_text_ctx(50)
+            .n_text_state(64)
+            .n_text_head(4)
+            .n_text_layer(1);
+
+        let weights = WhisperWeights::random(&config).unwrap();
+        let model = WhisperModel::new(config);
+
+        // Batch of 2 mel spectrograms
+        let mel = Array::zeros::<f32>(&[2, 40, 100]).unwrap();
+
+        // Batch of 2 token sequences
+        let tokens = Array::from_slice(&[
+            0i32, 1, 2, 3,
+            4, 5, 6, 7,
+        ], &[2, 4]).unwrap();
+
+        let logits = model.forward(&mel, &tokens, &weights).unwrap();
+        logits.eval();
+
+        assert_eq!(logits.shape(), vec![2, 4, 500]);
+    }
 }

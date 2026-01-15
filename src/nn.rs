@@ -6950,3 +6950,852 @@ impl ViTModel {
         )
     }
 }
+
+// =============================================================================
+// Whisper Model (Speech Recognition)
+// =============================================================================
+
+/// Configuration for Whisper model.
+///
+/// Whisper is an encoder-decoder transformer for automatic speech recognition.
+/// It takes mel spectrogram audio features as input and outputs text tokens.
+///
+/// # Example
+///
+/// ```ignore
+/// use mlx_rs::nn::WhisperConfig;
+///
+/// // Use a preset configuration
+/// let config = WhisperConfig::whisper_base();
+///
+/// // Or customize
+/// let config = WhisperConfig::new()
+///     .n_mels(80)
+///     .n_audio_ctx(1500)
+///     .n_audio_state(512)
+///     .n_audio_head(8)
+///     .n_audio_layer(6)
+///     .n_vocab(51865)
+///     .n_text_ctx(448)
+///     .n_text_state(512)
+///     .n_text_head(8)
+///     .n_text_layer(6);
+/// ```
+#[derive(Debug, Clone)]
+pub struct WhisperConfig {
+    /// Number of mel frequency bins (default: 80)
+    pub n_mels: i32,
+    /// Audio context length (number of frames, default: 1500 for 30s)
+    pub n_audio_ctx: i32,
+    /// Audio encoder hidden size
+    pub n_audio_state: i32,
+    /// Number of audio encoder attention heads
+    pub n_audio_head: i32,
+    /// Number of audio encoder layers
+    pub n_audio_layer: i32,
+    /// Vocabulary size
+    pub n_vocab: i32,
+    /// Text context length (max tokens)
+    pub n_text_ctx: i32,
+    /// Text decoder hidden size
+    pub n_text_state: i32,
+    /// Number of text decoder attention heads
+    pub n_text_head: i32,
+    /// Number of text decoder layers
+    pub n_text_layer: i32,
+}
+
+impl WhisperConfig {
+    /// Create a new WhisperConfig with default values (base size).
+    pub fn new() -> Self {
+        Self {
+            n_mels: 80,
+            n_audio_ctx: 1500,
+            n_audio_state: 512,
+            n_audio_head: 8,
+            n_audio_layer: 6,
+            n_vocab: 51865,
+            n_text_ctx: 448,
+            n_text_state: 512,
+            n_text_head: 8,
+            n_text_layer: 6,
+        }
+    }
+
+    /// Whisper tiny configuration (39M parameters).
+    pub fn whisper_tiny() -> Self {
+        Self {
+            n_mels: 80,
+            n_audio_ctx: 1500,
+            n_audio_state: 384,
+            n_audio_head: 6,
+            n_audio_layer: 4,
+            n_vocab: 51865,
+            n_text_ctx: 448,
+            n_text_state: 384,
+            n_text_head: 6,
+            n_text_layer: 4,
+        }
+    }
+
+    /// Whisper base configuration (74M parameters).
+    pub fn whisper_base() -> Self {
+        Self::new()
+    }
+
+    /// Whisper small configuration (244M parameters).
+    pub fn whisper_small() -> Self {
+        Self {
+            n_mels: 80,
+            n_audio_ctx: 1500,
+            n_audio_state: 768,
+            n_audio_head: 12,
+            n_audio_layer: 12,
+            n_vocab: 51865,
+            n_text_ctx: 448,
+            n_text_state: 768,
+            n_text_head: 12,
+            n_text_layer: 12,
+        }
+    }
+
+    /// Whisper medium configuration (769M parameters).
+    pub fn whisper_medium() -> Self {
+        Self {
+            n_mels: 80,
+            n_audio_ctx: 1500,
+            n_audio_state: 1024,
+            n_audio_head: 16,
+            n_audio_layer: 24,
+            n_vocab: 51865,
+            n_text_ctx: 448,
+            n_text_state: 1024,
+            n_text_head: 16,
+            n_text_layer: 24,
+        }
+    }
+
+    /// Whisper large configuration (1550M parameters).
+    pub fn whisper_large() -> Self {
+        Self {
+            n_mels: 80,
+            n_audio_ctx: 1500,
+            n_audio_state: 1280,
+            n_audio_head: 20,
+            n_audio_layer: 32,
+            n_vocab: 51865,
+            n_text_ctx: 448,
+            n_text_state: 1280,
+            n_text_head: 20,
+            n_text_layer: 32,
+        }
+    }
+
+    /// Whisper large-v2 configuration (same architecture as large).
+    pub fn whisper_large_v2() -> Self {
+        Self::whisper_large()
+    }
+
+    /// Whisper large-v3 configuration (128 mel bins).
+    pub fn whisper_large_v3() -> Self {
+        Self {
+            n_mels: 128,
+            n_audio_ctx: 1500,
+            n_audio_state: 1280,
+            n_audio_head: 20,
+            n_audio_layer: 32,
+            n_vocab: 51866,
+            n_text_ctx: 448,
+            n_text_state: 1280,
+            n_text_head: 20,
+            n_text_layer: 32,
+        }
+    }
+
+    // Builder methods
+    pub fn n_mels(mut self, n_mels: i32) -> Self {
+        self.n_mels = n_mels;
+        self
+    }
+
+    pub fn n_audio_ctx(mut self, n_audio_ctx: i32) -> Self {
+        self.n_audio_ctx = n_audio_ctx;
+        self
+    }
+
+    pub fn n_audio_state(mut self, n_audio_state: i32) -> Self {
+        self.n_audio_state = n_audio_state;
+        self
+    }
+
+    pub fn n_audio_head(mut self, n_audio_head: i32) -> Self {
+        self.n_audio_head = n_audio_head;
+        self
+    }
+
+    pub fn n_audio_layer(mut self, n_audio_layer: i32) -> Self {
+        self.n_audio_layer = n_audio_layer;
+        self
+    }
+
+    pub fn n_vocab(mut self, n_vocab: i32) -> Self {
+        self.n_vocab = n_vocab;
+        self
+    }
+
+    pub fn n_text_ctx(mut self, n_text_ctx: i32) -> Self {
+        self.n_text_ctx = n_text_ctx;
+        self
+    }
+
+    pub fn n_text_state(mut self, n_text_state: i32) -> Self {
+        self.n_text_state = n_text_state;
+        self
+    }
+
+    pub fn n_text_head(mut self, n_text_head: i32) -> Self {
+        self.n_text_head = n_text_head;
+        self
+    }
+
+    pub fn n_text_layer(mut self, n_text_layer: i32) -> Self {
+        self.n_text_layer = n_text_layer;
+        self
+    }
+
+    /// Get the head dimension for audio encoder.
+    pub fn audio_head_dim(&self) -> i32 {
+        self.n_audio_state / self.n_audio_head
+    }
+
+    /// Get the head dimension for text decoder.
+    pub fn text_head_dim(&self) -> i32 {
+        self.n_text_state / self.n_text_head
+    }
+}
+
+impl Default for WhisperConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Weights for a single Whisper encoder layer.
+#[derive(Debug, Clone)]
+pub struct WhisperEncoderLayerWeights {
+    /// Self-attention layer norm weight
+    pub attn_ln_weight: Array,
+    /// Self-attention layer norm bias
+    pub attn_ln_bias: Array,
+    /// Query projection weight
+    pub attn_q_weight: Array,
+    /// Key projection weight
+    pub attn_k_weight: Array,
+    /// Value projection weight
+    pub attn_v_weight: Array,
+    /// Output projection weight
+    pub attn_out_weight: Array,
+    /// Output projection bias
+    pub attn_out_bias: Array,
+    /// MLP layer norm weight
+    pub mlp_ln_weight: Array,
+    /// MLP layer norm bias
+    pub mlp_ln_bias: Array,
+    /// MLP first linear weight
+    pub mlp_fc1_weight: Array,
+    /// MLP first linear bias
+    pub mlp_fc1_bias: Array,
+    /// MLP second linear weight
+    pub mlp_fc2_weight: Array,
+    /// MLP second linear bias
+    pub mlp_fc2_bias: Array,
+}
+
+/// Weights for a single Whisper decoder layer.
+#[derive(Debug, Clone)]
+pub struct WhisperDecoderLayerWeights {
+    /// Self-attention layer norm weight
+    pub attn_ln_weight: Array,
+    /// Self-attention layer norm bias
+    pub attn_ln_bias: Array,
+    /// Self-attention query projection weight
+    pub attn_q_weight: Array,
+    /// Self-attention key projection weight
+    pub attn_k_weight: Array,
+    /// Self-attention value projection weight
+    pub attn_v_weight: Array,
+    /// Self-attention output projection weight
+    pub attn_out_weight: Array,
+    /// Self-attention output projection bias
+    pub attn_out_bias: Array,
+    /// Cross-attention layer norm weight
+    pub cross_attn_ln_weight: Array,
+    /// Cross-attention layer norm bias
+    pub cross_attn_ln_bias: Array,
+    /// Cross-attention query projection weight
+    pub cross_attn_q_weight: Array,
+    /// Cross-attention key projection weight
+    pub cross_attn_k_weight: Array,
+    /// Cross-attention value projection weight
+    pub cross_attn_v_weight: Array,
+    /// Cross-attention output projection weight
+    pub cross_attn_out_weight: Array,
+    /// Cross-attention output projection bias
+    pub cross_attn_out_bias: Array,
+    /// MLP layer norm weight
+    pub mlp_ln_weight: Array,
+    /// MLP layer norm bias
+    pub mlp_ln_bias: Array,
+    /// MLP first linear weight
+    pub mlp_fc1_weight: Array,
+    /// MLP first linear bias
+    pub mlp_fc1_bias: Array,
+    /// MLP second linear weight
+    pub mlp_fc2_weight: Array,
+    /// MLP second linear bias
+    pub mlp_fc2_bias: Array,
+}
+
+/// All weights for the Whisper model.
+#[derive(Debug, Clone)]
+pub struct WhisperWeights {
+    /// First conv layer weight (audio encoder)
+    pub encoder_conv1_weight: Array,
+    /// First conv layer bias (audio encoder)
+    pub encoder_conv1_bias: Array,
+    /// Second conv layer weight (audio encoder)
+    pub encoder_conv2_weight: Array,
+    /// Second conv layer bias (audio encoder)
+    pub encoder_conv2_bias: Array,
+    /// Audio encoder positional embeddings
+    pub encoder_positional_embedding: Array,
+    /// Audio encoder layer weights
+    pub encoder_layers: Vec<WhisperEncoderLayerWeights>,
+    /// Audio encoder final layer norm weight
+    pub encoder_ln_weight: Array,
+    /// Audio encoder final layer norm bias
+    pub encoder_ln_bias: Array,
+    /// Text decoder token embeddings
+    pub decoder_token_embedding: Array,
+    /// Text decoder positional embeddings
+    pub decoder_positional_embedding: Array,
+    /// Text decoder layer weights
+    pub decoder_layers: Vec<WhisperDecoderLayerWeights>,
+    /// Text decoder final layer norm weight
+    pub decoder_ln_weight: Array,
+    /// Text decoder final layer norm bias
+    pub decoder_ln_bias: Array,
+}
+
+impl WhisperWeights {
+    /// Create random weights for testing.
+    pub fn random(config: &WhisperConfig) -> Result<Self> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let scale = 0.02f32;
+
+        // Helper to create random array
+        let mut random_array = |shape: &[i32]| -> Result<Array> {
+            let size: i32 = shape.iter().product();
+            let data: Vec<f32> = (0..size).map(|_| rng.gen::<f32>() * scale - scale / 2.0).collect();
+            Array::from_slice(&data, shape)
+        };
+
+        // Encoder conv layers
+        // Conv1d weight shape: (out_channels, kernel_size, in_channels) for MLX
+        let encoder_conv1_weight = random_array(&[config.n_audio_state, 3, config.n_mels])?;
+        let encoder_conv1_bias = random_array(&[config.n_audio_state])?;
+        let encoder_conv2_weight = random_array(&[config.n_audio_state, 3, config.n_audio_state])?;
+        let encoder_conv2_bias = random_array(&[config.n_audio_state])?;
+
+        // Encoder positional embedding
+        let encoder_positional_embedding = random_array(&[config.n_audio_ctx, config.n_audio_state])?;
+
+        // Encoder layers
+        let mut encoder_layers = Vec::new();
+        for _ in 0..config.n_audio_layer {
+            encoder_layers.push(WhisperEncoderLayerWeights {
+                attn_ln_weight: random_array(&[config.n_audio_state])?,
+                attn_ln_bias: random_array(&[config.n_audio_state])?,
+                attn_q_weight: random_array(&[config.n_audio_state, config.n_audio_state])?,
+                attn_k_weight: random_array(&[config.n_audio_state, config.n_audio_state])?,
+                attn_v_weight: random_array(&[config.n_audio_state, config.n_audio_state])?,
+                attn_out_weight: random_array(&[config.n_audio_state, config.n_audio_state])?,
+                attn_out_bias: random_array(&[config.n_audio_state])?,
+                mlp_ln_weight: random_array(&[config.n_audio_state])?,
+                mlp_ln_bias: random_array(&[config.n_audio_state])?,
+                mlp_fc1_weight: random_array(&[config.n_audio_state * 4, config.n_audio_state])?,
+                mlp_fc1_bias: random_array(&[config.n_audio_state * 4])?,
+                mlp_fc2_weight: random_array(&[config.n_audio_state, config.n_audio_state * 4])?,
+                mlp_fc2_bias: random_array(&[config.n_audio_state])?,
+            });
+        }
+
+        let encoder_ln_weight = random_array(&[config.n_audio_state])?;
+        let encoder_ln_bias = random_array(&[config.n_audio_state])?;
+
+        // Decoder embeddings
+        let decoder_token_embedding = random_array(&[config.n_vocab, config.n_text_state])?;
+        let decoder_positional_embedding = random_array(&[config.n_text_ctx, config.n_text_state])?;
+
+        // Decoder layers
+        let mut decoder_layers = Vec::new();
+        for _ in 0..config.n_text_layer {
+            decoder_layers.push(WhisperDecoderLayerWeights {
+                attn_ln_weight: random_array(&[config.n_text_state])?,
+                attn_ln_bias: random_array(&[config.n_text_state])?,
+                attn_q_weight: random_array(&[config.n_text_state, config.n_text_state])?,
+                attn_k_weight: random_array(&[config.n_text_state, config.n_text_state])?,
+                attn_v_weight: random_array(&[config.n_text_state, config.n_text_state])?,
+                attn_out_weight: random_array(&[config.n_text_state, config.n_text_state])?,
+                attn_out_bias: random_array(&[config.n_text_state])?,
+                cross_attn_ln_weight: random_array(&[config.n_text_state])?,
+                cross_attn_ln_bias: random_array(&[config.n_text_state])?,
+                cross_attn_q_weight: random_array(&[config.n_text_state, config.n_text_state])?,
+                cross_attn_k_weight: random_array(&[config.n_audio_state, config.n_text_state])?,
+                cross_attn_v_weight: random_array(&[config.n_audio_state, config.n_text_state])?,
+                cross_attn_out_weight: random_array(&[config.n_text_state, config.n_text_state])?,
+                cross_attn_out_bias: random_array(&[config.n_text_state])?,
+                mlp_ln_weight: random_array(&[config.n_text_state])?,
+                mlp_ln_bias: random_array(&[config.n_text_state])?,
+                mlp_fc1_weight: random_array(&[config.n_text_state * 4, config.n_text_state])?,
+                mlp_fc1_bias: random_array(&[config.n_text_state * 4])?,
+                mlp_fc2_weight: random_array(&[config.n_text_state, config.n_text_state * 4])?,
+                mlp_fc2_bias: random_array(&[config.n_text_state])?,
+            });
+        }
+
+        let decoder_ln_weight = random_array(&[config.n_text_state])?;
+        let decoder_ln_bias = random_array(&[config.n_text_state])?;
+
+        Ok(Self {
+            encoder_conv1_weight,
+            encoder_conv1_bias,
+            encoder_conv2_weight,
+            encoder_conv2_bias,
+            encoder_positional_embedding,
+            encoder_layers,
+            encoder_ln_weight,
+            encoder_ln_bias,
+            decoder_token_embedding,
+            decoder_positional_embedding,
+            decoder_layers,
+            decoder_ln_weight,
+            decoder_ln_bias,
+        })
+    }
+}
+
+/// Sinusoidal positional embedding for Whisper.
+#[allow(dead_code)]
+fn whisper_sinusoidal_embedding(length: i32, dim: i32) -> Result<Array> {
+    let half_dim = dim / 2;
+
+    // Create position indices
+    let positions = Array::arange::<f32>(0.0, length as f64, 1.0)?;
+
+    // Create dimension indices and compute frequencies
+    let dim_indices = Array::arange::<f32>(0.0, half_dim as f64, 1.0)?;
+    let log_timescale = (10000.0f32).ln() / (half_dim as f32 - 1.0);
+    let scale_factor = Array::from_float(-log_timescale);
+    let inv_timescales = (&dim_indices * &scale_factor).exp()?;
+
+    // Compute angles: positions * inv_timescales
+    let positions_expanded = positions.reshape(&[length, 1])?;
+    let inv_timescales_expanded = inv_timescales.reshape(&[1, half_dim])?;
+    let angles = positions_expanded.matmul(&inv_timescales_expanded)?;
+
+    // Concatenate sin and cos
+    let sin_emb = angles.sin()?;
+    let cos_emb = angles.cos()?;
+
+    crate::ops::concatenate(&[&sin_emb, &cos_emb], -1)
+}
+
+/// Whisper encoder self-attention.
+fn whisper_encoder_attention(
+    x: &Array,
+    weights: &WhisperEncoderLayerWeights,
+    config: &WhisperConfig,
+) -> Result<Array> {
+    let shape = x.shape();
+    let batch_size = shape[0];
+    let seq_len = shape[1];
+    let n_head = config.n_audio_head;
+    let head_dim = config.audio_head_dim();
+
+    // Layer norm
+    let x_norm = layer_norm(x, &weights.attn_ln_weight, &weights.attn_ln_bias, 1e-5)?;
+
+    // QKV projections
+    let q = x_norm.matmul(&weights.attn_q_weight.transpose()?)?;
+    let k = x_norm.matmul(&weights.attn_k_weight.transpose()?)?;
+    let v = x_norm.matmul(&weights.attn_v_weight.transpose()?)?;
+
+    // Reshape for multi-head attention: (batch, seq, n_head, head_dim) -> (batch, n_head, seq, head_dim)
+    let q = q.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let k = k.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let v = v.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+
+    // Scaled dot-product attention
+    let scale = Array::from_float((head_dim as f32).sqrt());
+    let attn_weights = q.matmul(&k.transpose_axes(&[0, 1, 3, 2])?)?;
+    let attn_weights = &attn_weights / &scale;
+    let attn_weights = softmax(&attn_weights, -1)?;
+    let attn_output = attn_weights.matmul(&v)?;
+
+    // Reshape back: (batch, n_head, seq, head_dim) -> (batch, seq, hidden)
+    let attn_output = attn_output.transpose_axes(&[0, 2, 1, 3])?;
+    let attn_output = attn_output.reshape(&[batch_size, seq_len, config.n_audio_state])?;
+
+    // Output projection
+    let attn_output = attn_output.matmul(&weights.attn_out_weight.transpose()?)?;
+    let attn_output = &attn_output + &weights.attn_out_bias;
+
+    // Residual connection
+    Ok(x + &attn_output)
+}
+
+/// Whisper encoder MLP.
+fn whisper_encoder_mlp(
+    x: &Array,
+    weights: &WhisperEncoderLayerWeights,
+) -> Result<Array> {
+    // Layer norm
+    let x_norm = layer_norm(x, &weights.mlp_ln_weight, &weights.mlp_ln_bias, 1e-5)?;
+
+    // MLP: fc1 -> gelu -> fc2
+    let hidden = x_norm.matmul(&weights.mlp_fc1_weight.transpose()?)?;
+    let hidden = &hidden + &weights.mlp_fc1_bias;
+    let hidden = gelu(&hidden)?;
+    let output = hidden.matmul(&weights.mlp_fc2_weight.transpose()?)?;
+    let output = &output + &weights.mlp_fc2_bias;
+
+    // Residual connection
+    Ok(x + &output)
+}
+
+/// Single Whisper encoder layer.
+fn whisper_encoder_layer(
+    x: &Array,
+    weights: &WhisperEncoderLayerWeights,
+    config: &WhisperConfig,
+) -> Result<Array> {
+    let x = whisper_encoder_attention(x, weights, config)?;
+    whisper_encoder_mlp(&x, weights)
+}
+
+/// Whisper decoder self-attention (causal).
+fn whisper_decoder_self_attention(
+    x: &Array,
+    weights: &WhisperDecoderLayerWeights,
+    config: &WhisperConfig,
+    mask: Option<&Array>,
+) -> Result<Array> {
+    let shape = x.shape();
+    let batch_size = shape[0];
+    let seq_len = shape[1];
+    let n_head = config.n_text_head;
+    let head_dim = config.text_head_dim();
+
+    // Layer norm
+    let x_norm = layer_norm(x, &weights.attn_ln_weight, &weights.attn_ln_bias, 1e-5)?;
+
+    // QKV projections
+    let q = x_norm.matmul(&weights.attn_q_weight.transpose()?)?;
+    let k = x_norm.matmul(&weights.attn_k_weight.transpose()?)?;
+    let v = x_norm.matmul(&weights.attn_v_weight.transpose()?)?;
+
+    // Reshape for multi-head attention
+    let q = q.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let k = k.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let v = v.reshape(&[batch_size, seq_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+
+    // Scaled dot-product attention with causal mask
+    let scale = Array::from_float((head_dim as f32).sqrt());
+    let attn_weights = q.matmul(&k.transpose_axes(&[0, 1, 3, 2])?)?;
+    let mut attn_weights = &attn_weights / &scale;
+
+    // Apply causal mask
+    if let Some(m) = mask {
+        attn_weights = &attn_weights + m;
+    }
+
+    let attn_weights = softmax(&attn_weights, -1)?;
+    let attn_output = attn_weights.matmul(&v)?;
+
+    // Reshape back
+    let attn_output = attn_output.transpose_axes(&[0, 2, 1, 3])?;
+    let attn_output = attn_output.reshape(&[batch_size, seq_len, config.n_text_state])?;
+
+    // Output projection
+    let attn_output = attn_output.matmul(&weights.attn_out_weight.transpose()?)?;
+    let attn_output = &attn_output + &weights.attn_out_bias;
+
+    // Residual connection
+    Ok(x + &attn_output)
+}
+
+/// Whisper decoder cross-attention.
+fn whisper_decoder_cross_attention(
+    x: &Array,
+    encoder_output: &Array,
+    weights: &WhisperDecoderLayerWeights,
+    config: &WhisperConfig,
+) -> Result<Array> {
+    let shape = x.shape();
+    let batch_size = shape[0];
+    let tgt_len = shape[1];
+    let encoder_shape = encoder_output.shape();
+    let src_len = encoder_shape[1];
+    let n_head = config.n_text_head;
+    let head_dim = config.text_head_dim();
+
+    // Layer norm
+    let x_norm = layer_norm(x, &weights.cross_attn_ln_weight, &weights.cross_attn_ln_bias, 1e-5)?;
+
+    // Q from decoder, K/V from encoder
+    let q = x_norm.matmul(&weights.cross_attn_q_weight.transpose()?)?;
+    let k = encoder_output.matmul(&weights.cross_attn_k_weight.transpose()?)?;
+    let v = encoder_output.matmul(&weights.cross_attn_v_weight.transpose()?)?;
+
+    // Reshape for multi-head attention
+    let q = q.reshape(&[batch_size, tgt_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let k = k.reshape(&[batch_size, src_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+    let v = v.reshape(&[batch_size, src_len, n_head, head_dim])?.transpose_axes(&[0, 2, 1, 3])?;
+
+    // Scaled dot-product attention (no mask for cross-attention)
+    let scale = Array::from_float((head_dim as f32).sqrt());
+    let attn_weights = q.matmul(&k.transpose_axes(&[0, 1, 3, 2])?)?;
+    let attn_weights = &attn_weights / &scale;
+    let attn_weights = softmax(&attn_weights, -1)?;
+    let attn_output = attn_weights.matmul(&v)?;
+
+    // Reshape back
+    let attn_output = attn_output.transpose_axes(&[0, 2, 1, 3])?;
+    let attn_output = attn_output.reshape(&[batch_size, tgt_len, config.n_text_state])?;
+
+    // Output projection
+    let attn_output = attn_output.matmul(&weights.cross_attn_out_weight.transpose()?)?;
+    let attn_output = &attn_output + &weights.cross_attn_out_bias;
+
+    // Residual connection
+    Ok(x + &attn_output)
+}
+
+/// Whisper decoder MLP.
+fn whisper_decoder_mlp(
+    x: &Array,
+    weights: &WhisperDecoderLayerWeights,
+) -> Result<Array> {
+    // Layer norm
+    let x_norm = layer_norm(x, &weights.mlp_ln_weight, &weights.mlp_ln_bias, 1e-5)?;
+
+    // MLP: fc1 -> gelu -> fc2
+    let hidden = x_norm.matmul(&weights.mlp_fc1_weight.transpose()?)?;
+    let hidden = &hidden + &weights.mlp_fc1_bias;
+    let hidden = gelu(&hidden)?;
+    let output = hidden.matmul(&weights.mlp_fc2_weight.transpose()?)?;
+    let output = &output + &weights.mlp_fc2_bias;
+
+    // Residual connection
+    Ok(x + &output)
+}
+
+/// Single Whisper decoder layer.
+fn whisper_decoder_layer(
+    x: &Array,
+    encoder_output: &Array,
+    weights: &WhisperDecoderLayerWeights,
+    config: &WhisperConfig,
+    mask: Option<&Array>,
+) -> Result<Array> {
+    let x = whisper_decoder_self_attention(x, weights, config, mask)?;
+    let x = whisper_decoder_cross_attention(&x, encoder_output, weights, config)?;
+    whisper_decoder_mlp(&x, weights)
+}
+
+/// Whisper model for automatic speech recognition.
+///
+/// # Example
+///
+/// ```ignore
+/// use mlx_rs::nn::{WhisperConfig, WhisperModel, WhisperWeights};
+/// use mlx_rs::Array;
+///
+/// let config = WhisperConfig::whisper_base();
+/// let weights = WhisperWeights::random(&config).unwrap();
+/// let model = WhisperModel::new(config);
+///
+/// // Mel spectrogram input: (batch, n_mels, n_frames)
+/// let mel = Array::zeros::<f32>(&[1, 80, 3000]).unwrap();
+///
+/// // Encode audio
+/// let audio_features = model.encode(&mel, &weights).unwrap();
+///
+/// // Decode with token IDs
+/// let tokens = Array::from_slice(&[50258i32, 50259, 50359], &[1, 3]).unwrap();
+/// let logits = model.decode(&tokens, &audio_features, &weights).unwrap();
+/// ```
+#[derive(Debug, Clone)]
+pub struct WhisperModel {
+    config: WhisperConfig,
+}
+
+impl WhisperModel {
+    /// Create a new Whisper model with the given configuration.
+    pub fn new(config: WhisperConfig) -> Self {
+        Self { config }
+    }
+
+    /// Encode audio mel spectrogram to audio features.
+    ///
+    /// # Arguments
+    /// * `mel` - Mel spectrogram of shape (batch, n_mels, n_frames)
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// Audio features of shape (batch, n_audio_ctx, n_audio_state)
+    pub fn encode(&self, mel: &Array, weights: &WhisperWeights) -> Result<Array> {
+        let shape = mel.shape();
+        if shape.len() != 3 {
+            return Err(Error::InvalidShape("Expected 3D mel spectrogram (batch, n_mels, n_frames)".into()));
+        }
+
+        // Transpose to (batch, n_frames, n_mels) for processing
+        let x = mel.transpose_axes(&[0, 2, 1])?;
+
+        // Conv1d layers - MLX conv1d expects (batch, seq, channels)
+        // First conv: kernel_size=3, stride=1, padding=1, dilation=1, groups=1
+        let x = conv1d(&x, &weights.encoder_conv1_weight, 1, 1, 1, 1)?;
+        let x = &x + &weights.encoder_conv1_bias;
+        let x = gelu(&x)?;
+
+        // Second conv: kernel_size=3, stride=2, padding=1, dilation=1, groups=1
+        let x = conv1d(&x, &weights.encoder_conv2_weight, 2, 1, 1, 1)?;
+        let x = &x + &weights.encoder_conv2_bias;
+        let x = gelu(&x)?;
+
+        // Add positional embeddings
+        let seq_len = x.shape()[1];
+        let pos_emb = if seq_len <= self.config.n_audio_ctx {
+            // Slice positional embeddings: [0:seq_len, :]
+            weights.encoder_positional_embedding.slice(
+                &[0, 0],
+                &[seq_len, self.config.n_audio_state],
+                None,
+            )?
+        } else {
+            return Err(Error::InvalidShape(format!(
+                "Audio sequence length {} exceeds max context {}",
+                seq_len, self.config.n_audio_ctx
+            )));
+        };
+        let x = &x + &pos_emb;
+
+        // Encoder layers
+        let mut x = x;
+        for layer_weights in &weights.encoder_layers {
+            x = whisper_encoder_layer(&x, layer_weights, &self.config)?;
+        }
+
+        // Final layer norm
+        layer_norm(&x, &weights.encoder_ln_weight, &weights.encoder_ln_bias, 1e-5)
+    }
+
+    /// Decode token IDs given audio features.
+    ///
+    /// # Arguments
+    /// * `tokens` - Token IDs of shape (batch, seq_len)
+    /// * `audio_features` - Encoded audio features from encode()
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// Logits of shape (batch, seq_len, vocab_size)
+    pub fn decode(
+        &self,
+        tokens: &Array,
+        audio_features: &Array,
+        weights: &WhisperWeights,
+    ) -> Result<Array> {
+        let shape = tokens.shape();
+        if shape.len() != 2 {
+            return Err(Error::InvalidShape("Expected 2D token IDs (batch, seq_len)".into()));
+        }
+        let seq_len = shape[1];
+
+        // Token embeddings
+        let x = embedding(&weights.decoder_token_embedding, tokens)?;
+
+        // Add positional embeddings
+        let pos_emb = if seq_len <= self.config.n_text_ctx {
+            // Slice positional embeddings: [0:seq_len, :]
+            weights.decoder_positional_embedding.slice(
+                &[0, 0],
+                &[seq_len, self.config.n_text_state],
+                None,
+            )?
+        } else {
+            return Err(Error::InvalidShape(format!(
+                "Token sequence length {} exceeds max context {}",
+                seq_len, self.config.n_text_ctx
+            )));
+        };
+        let x = &x + &pos_emb;
+
+        // Create causal mask
+        let mask = self.create_causal_mask(seq_len)?;
+
+        // Decoder layers
+        let mut x = x;
+        for layer_weights in &weights.decoder_layers {
+            x = whisper_decoder_layer(&x, audio_features, layer_weights, &self.config, Some(&mask))?;
+        }
+
+        // Final layer norm
+        let x = layer_norm(&x, &weights.decoder_ln_weight, &weights.decoder_ln_bias, 1e-5)?;
+
+        // Project to vocabulary (weight tying with embedding)
+        x.matmul(&weights.decoder_token_embedding.transpose()?)
+    }
+
+    /// Create a causal attention mask.
+    fn create_causal_mask(&self, seq_len: i32) -> Result<Array> {
+        let neg_inf = f32::NEG_INFINITY;
+        let mut mask_data = vec![0.0f32; (seq_len * seq_len) as usize];
+
+        for i in 0..seq_len {
+            for j in 0..seq_len {
+                if j > i {
+                    mask_data[(i * seq_len + j) as usize] = neg_inf;
+                }
+            }
+        }
+
+        Array::from_slice(&mask_data, &[seq_len, seq_len])
+    }
+
+    /// Full forward pass: encode audio and decode to get logits for given tokens.
+    ///
+    /// # Arguments
+    /// * `mel` - Mel spectrogram of shape (batch, n_mels, n_frames)
+    /// * `tokens` - Token IDs of shape (batch, seq_len)
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// Logits of shape (batch, seq_len, vocab_size)
+    pub fn forward(
+        &self,
+        mel: &Array,
+        tokens: &Array,
+        weights: &WhisperWeights,
+    ) -> Result<Array> {
+        let audio_features = self.encode(mel, weights)?;
+        self.decode(tokens, &audio_features, weights)
+    }
+
+    /// Get the configuration.
+    pub fn config(&self) -> &WhisperConfig {
+        &self.config
+    }
+}

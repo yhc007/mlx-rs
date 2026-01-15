@@ -11,6 +11,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **Llama Model**: Complete implementation with GQA support for Llama 2/3 architectures
 - **BERT Model**: Encoder-only transformer for embeddings, classification, NLU tasks
 - **Vision Transformer (ViT)**: Image classification with patch-based attention
+- **Whisper Model**: Speech recognition with encoder-decoder transformer
 - **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
 - **Learning Rate Schedulers**: StepLR, CosineAnnealing, WarmupCosine, OneCycleLR, and more
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
@@ -231,6 +232,37 @@ let logits = model.forward(&images, &weights).unwrap();
 let (hidden_states, cls_token) = model.get_features(&images, &weights).unwrap();
 ```
 
+### Whisper Model
+
+```rust
+use mlx_rs::nn::{WhisperConfig, WhisperModel, WhisperWeights};
+
+// Use preset configuration
+let config = WhisperConfig::whisper_base();
+
+// Or customize
+let config = WhisperConfig::new()
+    .n_mels(80)
+    .n_audio_state(512)
+    .n_audio_layer(6)
+    .n_text_state(512)
+    .n_text_layer(6);
+
+// Create model
+let model = WhisperModel::new(config);
+
+// Encode audio (mel spectrogram): (batch, n_mels, n_frames)
+let mel = Array::zeros::<f32>(&[1, 80, 3000]).unwrap();
+let audio_features = model.encode(&mel, &weights).unwrap();
+
+// Decode with token IDs
+let tokens = Array::from_slice(&[50258i32, 50259], &[1, 2]).unwrap();
+let logits = model.decode(&tokens, &audio_features, &weights).unwrap();
+
+// Or full forward pass
+let logits = model.forward(&mel, &tokens, &weights).unwrap();
+```
+
 ### Serialization
 
 ```rust
@@ -333,6 +365,7 @@ cargo run --example optimizer       # SGD, Adam, AdamW, RMSprop
 cargo run --example llama           # Llama model architecture
 cargo run --example bert            # BERT model for embeddings
 cargo run --example vit             # Vision Transformer for images
+cargo run --example whisper         # Whisper speech recognition
 cargo run --example serialization   # Load/save safetensors, npy, npz
 cargo run --example scheduler       # Learning rate schedulers
 ```

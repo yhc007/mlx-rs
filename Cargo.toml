@@ -58,3 +58,7 @@ path = "examples/bert.rs"
 [[example]]
 name = "vit"
 path = "examples/vit.rs"
+
+[[example]]
+name = "whisper"
+path = "examples/whisper.rs"
