@@ -54,3 +54,7 @@ path = "examples/scheduler.rs"
 [[example]]
 name = "bert"
 path = "examples/bert.rs"
+
+[[example]]
+name = "vit"
+path = "examples/vit.rs"

@@ -2776,6 +2776,187 @@ mod tests {
     }
 
     // ============================================================================
+    // Vision Transformer (ViT) Tests
+    // ============================================================================
+
+    #[test]
+    fn test_vit_config() {
+        use nn::ViTConfig;
+
+        // Test default config
+        let config = ViTConfig::new();
+        assert_eq!(config.image_size, 224);
+        assert_eq!(config.patch_size, 16);
+        assert_eq!(config.hidden_size, 768);
+        assert_eq!(config.num_hidden_layers, 12);
+        assert_eq!(config.num_attention_heads, 12);
+        assert_eq!(config.num_patches(), 196);  // (224/16)^2 = 14^2 = 196
+        assert_eq!(config.head_dim(), 64);
+
+        // Test preset configs
+        let base = ViTConfig::vit_base_patch16_224();
+        assert_eq!(base.hidden_size, 768);
+
+        let large = ViTConfig::vit_large_patch16_224();
+        assert_eq!(large.hidden_size, 1024);
+        assert_eq!(large.num_hidden_layers, 24);
+
+        let small = ViTConfig::vit_small_patch16_224();
+        assert_eq!(small.hidden_size, 384);
+
+        let tiny = ViTConfig::vit_tiny_patch16_224();
+        assert_eq!(tiny.hidden_size, 192);
+
+        // Test builder pattern
+        let custom = ViTConfig::new()
+            .image_size(384)
+            .patch_size(32)
+            .hidden_size(512)
+            .num_classes(100);
+        assert_eq!(custom.image_size, 384);
+        assert_eq!(custom.patch_size, 32);
+        assert_eq!(custom.num_patches(), 144);  // (384/32)^2 = 12^2 = 144
+        assert_eq!(custom.num_classes, 100);
+    }
+
+    #[test]
+    fn test_vit_forward() {
+        use nn::{ViTConfig, ViTModel, ViTWeights};
+
+        // Use a small config for testing
+        let config = ViTConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(64)
+            .num_hidden_layers(2)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .num_classes(10);
+
+        let weights = ViTWeights::random(&config).unwrap();
+        let model = ViTModel::new(config.clone());
+
+        // Create input: batch=1, height=32, width=32, channels=3 (NHWC format)
+        let images = Array::zeros::<f32>(&[1, 32, 32, 3]).unwrap();
+
+        // Forward pass
+        let logits = model.forward(&images, &weights).unwrap();
+        logits.eval();
+
+        // Check output shape: (batch, num_classes)
+        assert_eq!(logits.shape(), vec![1, 10]);
+    }
+
+    #[test]
+    fn test_vit_batch() {
+        use nn::{ViTConfig, ViTModel, ViTWeights};
+
+        let config = ViTConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .num_classes(10);
+
+        let weights = ViTWeights::random(&config).unwrap();
+        let model = ViTModel::new(config);
+
+        // Batch of 4 images (NHWC format)
+        let images = Array::zeros::<f32>(&[4, 32, 32, 3]).unwrap();
+
+        let logits = model.forward(&images, &weights).unwrap();
+        logits.eval();
+
+        assert_eq!(logits.shape(), vec![4, 10]);
+    }
+
+    #[test]
+    fn test_vit_get_features() {
+        use nn::{ViTConfig, ViTModel, ViTWeights};
+
+        let config = ViTConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256)
+            .num_classes(10);
+
+        let weights = ViTWeights::random(&config).unwrap();
+        let model = ViTModel::new(config.clone());
+
+        // NHWC format
+        let images = Array::zeros::<f32>(&[1, 32, 32, 3]).unwrap();
+
+        let (cls_output, sequence_output) = model.get_features(&images, &weights).unwrap();
+        cls_output.eval();
+        sequence_output.eval();
+
+        // CLS output: (batch, hidden_size)
+        assert_eq!(cls_output.shape(), vec![1, 64]);
+
+        // Sequence output: (batch, num_patches + 1, hidden_size)
+        // num_patches = (32/8)^2 = 16, plus CLS token = 17
+        assert_eq!(sequence_output.shape(), vec![1, 17, 64]);
+    }
+
+    #[test]
+    fn test_vit_patch_embedding() {
+        use nn::{ViTConfig, ViTModel, ViTWeights};
+
+        let config = ViTConfig::new()
+            .image_size(32)
+            .patch_size(8)
+            .hidden_size(64)
+            .num_hidden_layers(1)
+            .num_attention_heads(4)
+            .intermediate_size(256);
+
+        let weights = ViTWeights::random(&config).unwrap();
+        let model = ViTModel::new(config);
+
+        // NHWC format
+        let images = Array::zeros::<f32>(&[1, 32, 32, 3]).unwrap();
+
+        let patch_embeds = model.get_patch_embeddings(&images, &weights).unwrap();
+        patch_embeds.eval();
+
+        // Patch embeddings: (batch, num_patches, hidden_size)
+        // num_patches = (32/8)^2 = 16
+        assert_eq!(patch_embeds.shape(), vec![1, 16, 64]);
+    }
+
+    #[test]
+    fn test_vit_different_patch_sizes() {
+        use nn::{ViTConfig, ViTModel, ViTWeights};
+
+        // Test with patch_size=4
+        let config = ViTConfig::new()
+            .image_size(32)
+            .patch_size(4)
+            .hidden_size(32)
+            .num_hidden_layers(1)
+            .num_attention_heads(2)
+            .intermediate_size(128)
+            .num_classes(5);
+
+        let weights = ViTWeights::random(&config).unwrap();
+        let model = ViTModel::new(config.clone());
+
+        // NHWC format
+        let images = Array::zeros::<f32>(&[2, 32, 32, 3]).unwrap();
+        let logits = model.forward(&images, &weights).unwrap();
+        logits.eval();
+
+        // num_patches = (32/4)^2 = 64
+        assert_eq!(config.num_patches(), 64);
+        assert_eq!(logits.shape(), vec![2, 5]);
+    }
+
+    // ============================================================================
     // Comprehensive Array Operation Tests
     // ============================================================================
 

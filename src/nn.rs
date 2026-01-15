@@ -6280,3 +6280,673 @@ impl BertModel {
         }
     }
 }
+
+// ============================================================================
+// Vision Transformer (ViT) Implementation
+// ============================================================================
+
+/// Configuration for Vision Transformer models.
+///
+/// ViT (Vision Transformer) applies the transformer architecture to image
+/// classification by treating images as sequences of patches.
+///
+/// # Example
+/// ```ignore
+/// use mlx_rs::nn::ViTConfig;
+///
+/// // Use a preset
+/// let config = ViTConfig::vit_base_patch16_224();
+///
+/// // Or customize
+/// let config = ViTConfig::new()
+///     .image_size(224)
+///     .patch_size(16)
+///     .hidden_size(768)
+///     .num_hidden_layers(12);
+/// ```
+#[derive(Debug, Clone)]
+pub struct ViTConfig {
+    /// Input image size (assumes square images)
+    pub image_size: i32,
+    /// Size of each patch (assumes square patches)
+    pub patch_size: i32,
+    /// Number of input channels (3 for RGB)
+    pub num_channels: i32,
+    /// Hidden size (embedding dimension)
+    pub hidden_size: i32,
+    /// Number of transformer layers
+    pub num_hidden_layers: i32,
+    /// Number of attention heads
+    pub num_attention_heads: i32,
+    /// Intermediate size in feed-forward layers
+    pub intermediate_size: i32,
+    /// Hidden activation function
+    pub hidden_act: String,
+    /// Dropout probability
+    pub hidden_dropout_prob: f32,
+    /// Attention dropout probability
+    pub attention_probs_dropout_prob: f32,
+    /// Layer normalization epsilon
+    pub layer_norm_eps: f32,
+    /// Number of classes for classification
+    pub num_classes: i32,
+}
+
+impl Default for ViTConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ViTConfig {
+    /// Create a new ViT configuration with default values.
+    pub fn new() -> Self {
+        Self {
+            image_size: 224,
+            patch_size: 16,
+            num_channels: 3,
+            hidden_size: 768,
+            num_hidden_layers: 12,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+            hidden_act: "gelu".to_string(),
+            hidden_dropout_prob: 0.0,
+            attention_probs_dropout_prob: 0.0,
+            layer_norm_eps: 1e-6,
+            num_classes: 1000,
+        }
+    }
+
+    /// ViT-Base with 16x16 patches for 224x224 images (86M parameters).
+    pub fn vit_base_patch16_224() -> Self {
+        Self::new()
+    }
+
+    /// ViT-Base with 32x32 patches for 224x224 images.
+    pub fn vit_base_patch32_224() -> Self {
+        Self {
+            patch_size: 32,
+            ..Self::new()
+        }
+    }
+
+    /// ViT-Large with 16x16 patches for 224x224 images (307M parameters).
+    pub fn vit_large_patch16_224() -> Self {
+        Self {
+            hidden_size: 1024,
+            num_hidden_layers: 24,
+            num_attention_heads: 16,
+            intermediate_size: 4096,
+            ..Self::new()
+        }
+    }
+
+    /// ViT-Huge with 14x14 patches for 224x224 images (632M parameters).
+    pub fn vit_huge_patch14_224() -> Self {
+        Self {
+            image_size: 224,
+            patch_size: 14,
+            hidden_size: 1280,
+            num_hidden_layers: 32,
+            num_attention_heads: 16,
+            intermediate_size: 5120,
+            ..Self::new()
+        }
+    }
+
+    /// ViT-Small (DeiT-Small) configuration.
+    pub fn vit_small_patch16_224() -> Self {
+        Self {
+            hidden_size: 384,
+            num_hidden_layers: 12,
+            num_attention_heads: 6,
+            intermediate_size: 1536,
+            ..Self::new()
+        }
+    }
+
+    /// ViT-Tiny configuration.
+    pub fn vit_tiny_patch16_224() -> Self {
+        Self {
+            hidden_size: 192,
+            num_hidden_layers: 12,
+            num_attention_heads: 3,
+            intermediate_size: 768,
+            ..Self::new()
+        }
+    }
+
+    // Builder methods
+    pub fn image_size(mut self, image_size: i32) -> Self {
+        self.image_size = image_size;
+        self
+    }
+
+    pub fn patch_size(mut self, patch_size: i32) -> Self {
+        self.patch_size = patch_size;
+        self
+    }
+
+    pub fn num_channels(mut self, num_channels: i32) -> Self {
+        self.num_channels = num_channels;
+        self
+    }
+
+    pub fn hidden_size(mut self, hidden_size: i32) -> Self {
+        self.hidden_size = hidden_size;
+        self
+    }
+
+    pub fn num_hidden_layers(mut self, num_hidden_layers: i32) -> Self {
+        self.num_hidden_layers = num_hidden_layers;
+        self
+    }
+
+    pub fn num_attention_heads(mut self, num_attention_heads: i32) -> Self {
+        self.num_attention_heads = num_attention_heads;
+        self
+    }
+
+    pub fn intermediate_size(mut self, intermediate_size: i32) -> Self {
+        self.intermediate_size = intermediate_size;
+        self
+    }
+
+    pub fn num_classes(mut self, num_classes: i32) -> Self {
+        self.num_classes = num_classes;
+        self
+    }
+
+    pub fn layer_norm_eps(mut self, layer_norm_eps: f32) -> Self {
+        self.layer_norm_eps = layer_norm_eps;
+        self
+    }
+
+    /// Get the number of patches.
+    pub fn num_patches(&self) -> i32 {
+        (self.image_size / self.patch_size) * (self.image_size / self.patch_size)
+    }
+
+    /// Get the head dimension.
+    pub fn head_dim(&self) -> i32 {
+        self.hidden_size / self.num_attention_heads
+    }
+}
+
+/// Patch embedding layer for ViT.
+///
+/// Converts an image into a sequence of patch embeddings using a convolution.
+///
+/// Note: MLX uses channels-last (NHWC) format for conv2d.
+/// Input should be (batch, height, width, channels).
+pub fn vit_patch_embedding(
+    pixel_values: &Array,
+    patch_embedding_weight: &Array,
+    patch_embedding_bias: &Array,
+    config: &ViTConfig,
+) -> Result<Array> {
+    let shape = pixel_values.shape();
+    if shape.len() != 4 {
+        return Err(Error::InvalidShape("Expected 4D input (batch, height, width, channels)".into()));
+    }
+
+    let batch_size = shape[0] as i32;
+    let patch_size = config.patch_size;
+    let hidden_size = config.hidden_size;
+
+    // Use conv2d with kernel_size=patch_size and stride=patch_size
+    // MLX conv2d expects: input (N, H, W, C), weight (O, kH, kW, C)
+    // This extracts non-overlapping patches and projects them
+    let patches = conv2d(
+        pixel_values,
+        patch_embedding_weight,
+        (patch_size, patch_size),  // stride = patch_size
+        (0, 0),                     // no padding
+        (1, 1),                     // dilation
+        1,                          // groups
+    )?;
+
+    // patches shape: (batch, num_patches_h, num_patches_w, hidden_size)
+    let patches_shape = patches.shape();
+    let num_patches_h = patches_shape[1] as i32;
+    let num_patches_w = patches_shape[2] as i32;
+    let num_patches = num_patches_h * num_patches_w;
+
+    // Add bias (broadcasts to hidden_size dimension)
+    let patches = &patches + patch_embedding_bias;
+
+    // Reshape to (batch, num_patches, hidden_size)
+    patches.reshape(&[batch_size, num_patches, hidden_size])
+}
+
+/// Add CLS token and position embeddings.
+pub fn vit_embeddings(
+    patch_embeddings: &Array,
+    cls_token: &Array,
+    position_embeddings: &Array,
+) -> Result<Array> {
+    let shape = patch_embeddings.shape();
+    let batch_size = shape[0] as i32;
+    let hidden_size = shape[2] as i32;
+
+    // Expand CLS token to batch size: (1, 1, hidden) -> (batch, 1, hidden)
+    let cls_tokens = broadcast_to(cls_token, &[batch_size, 1, hidden_size])?;
+
+    // Concatenate CLS token with patch embeddings: (batch, 1+num_patches, hidden)
+    let embeddings = crate::ops::concatenate(&[&cls_tokens, patch_embeddings], 1)?;
+
+    // Add position embeddings
+    Ok(&embeddings + position_embeddings)
+}
+
+/// ViT self-attention layer.
+///
+/// Same as BERT attention but without segment embeddings.
+pub fn vit_self_attention(
+    hidden_states: &Array,
+    query_weight: &Array,
+    query_bias: &Array,
+    key_weight: &Array,
+    key_bias: &Array,
+    value_weight: &Array,
+    value_bias: &Array,
+    config: &ViTConfig,
+) -> Result<Array> {
+    let shape = hidden_states.shape();
+    let batch_size = shape[0] as i32;
+    let seq_len = shape[1] as i32;
+    let hidden_size = config.hidden_size;
+    let num_heads = config.num_attention_heads;
+    let head_dim = config.head_dim();
+
+    // Linear projections
+    let query = hidden_states.matmul(query_weight)?;
+    let query = &query + query_bias;
+
+    let key = hidden_states.matmul(key_weight)?;
+    let key = &key + key_bias;
+
+    let value = hidden_states.matmul(value_weight)?;
+    let value = &value + value_bias;
+
+    // Reshape for multi-head attention
+    let query = query.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+    let query = query.transpose_axes(&[0, 2, 1, 3])?;
+
+    let key = key.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+    let key = key.transpose_axes(&[0, 2, 1, 3])?;
+
+    let value = value.reshape(&[batch_size, seq_len, num_heads, head_dim])?;
+    let value = value.transpose_axes(&[0, 2, 1, 3])?;
+
+    // Attention scores
+    let key_t = key.transpose_axes(&[0, 1, 3, 2])?;
+    let attention_scores = query.matmul(&key_t)?;
+
+    // Scale
+    let scale = Array::from_float((head_dim as f32).sqrt());
+    let attention_scores = &attention_scores / &scale;
+
+    // Softmax
+    let attention_probs = softmax(&attention_scores, -1)?;
+
+    // Context
+    let context = attention_probs.matmul(&value)?;
+
+    // Reshape back
+    let context = context.transpose_axes(&[0, 2, 1, 3])?;
+    context.reshape(&[batch_size, seq_len, hidden_size])
+}
+
+/// ViT attention output (projection + residual + layer norm).
+pub fn vit_attention_output(
+    hidden_states: &Array,
+    input_tensor: &Array,
+    dense_weight: &Array,
+    dense_bias: &Array,
+    layer_norm_weight: &Array,
+    layer_norm_bias: &Array,
+    config: &ViTConfig,
+) -> Result<Array> {
+    let hidden_states = hidden_states.matmul(dense_weight)?;
+    let hidden_states = &hidden_states + dense_bias;
+    let hidden_states = &hidden_states + input_tensor;
+    layer_norm(&hidden_states, layer_norm_weight, layer_norm_bias, config.layer_norm_eps)
+}
+
+/// ViT MLP (feed-forward) layer.
+pub fn vit_mlp(
+    hidden_states: &Array,
+    fc1_weight: &Array,
+    fc1_bias: &Array,
+    fc2_weight: &Array,
+    fc2_bias: &Array,
+) -> Result<Array> {
+    let hidden = hidden_states.matmul(fc1_weight)?;
+    let hidden = &hidden + fc1_bias;
+    let hidden = gelu(&hidden)?;
+    let hidden = hidden.matmul(fc2_weight)?;
+    Ok(&hidden + fc2_bias)
+}
+
+/// ViT transformer layer.
+pub fn vit_layer(
+    hidden_states: &Array,
+    layer_weights: &ViTLayerWeights,
+    config: &ViTConfig,
+) -> Result<Array> {
+    // Pre-norm for attention
+    let normed = layer_norm(
+        hidden_states,
+        &layer_weights.layernorm_before_weight,
+        &layer_weights.layernorm_before_bias,
+        config.layer_norm_eps,
+    )?;
+
+    // Self-attention
+    let attention_output = vit_self_attention(
+        &normed,
+        &layer_weights.attention_query_weight,
+        &layer_weights.attention_query_bias,
+        &layer_weights.attention_key_weight,
+        &layer_weights.attention_key_bias,
+        &layer_weights.attention_value_weight,
+        &layer_weights.attention_value_bias,
+        config,
+    )?;
+
+    // Attention output projection
+    let attention_output = attention_output.matmul(&layer_weights.attention_output_dense_weight)?;
+    let attention_output = &attention_output + &layer_weights.attention_output_dense_bias;
+
+    // Residual connection
+    let hidden_states = hidden_states + &attention_output;
+
+    // Pre-norm for MLP
+    let normed = layer_norm(
+        &hidden_states,
+        &layer_weights.layernorm_after_weight,
+        &layer_weights.layernorm_after_bias,
+        config.layer_norm_eps,
+    )?;
+
+    // MLP
+    let mlp_output = vit_mlp(
+        &normed,
+        &layer_weights.mlp_fc1_weight,
+        &layer_weights.mlp_fc1_bias,
+        &layer_weights.mlp_fc2_weight,
+        &layer_weights.mlp_fc2_bias,
+    )?;
+
+    // Residual connection
+    Ok(&hidden_states + &mlp_output)
+}
+
+/// Weights for a single ViT transformer layer.
+#[derive(Debug)]
+pub struct ViTLayerWeights {
+    // LayerNorm before attention
+    pub layernorm_before_weight: Array,
+    pub layernorm_before_bias: Array,
+    // Self-attention
+    pub attention_query_weight: Array,
+    pub attention_query_bias: Array,
+    pub attention_key_weight: Array,
+    pub attention_key_bias: Array,
+    pub attention_value_weight: Array,
+    pub attention_value_bias: Array,
+    pub attention_output_dense_weight: Array,
+    pub attention_output_dense_bias: Array,
+    // LayerNorm after attention (before MLP)
+    pub layernorm_after_weight: Array,
+    pub layernorm_after_bias: Array,
+    // MLP
+    pub mlp_fc1_weight: Array,
+    pub mlp_fc1_bias: Array,
+    pub mlp_fc2_weight: Array,
+    pub mlp_fc2_bias: Array,
+}
+
+impl ViTLayerWeights {
+    /// Initialize random weights for testing.
+    pub fn random(config: &ViTConfig) -> Result<Self> {
+        let hidden = config.hidden_size;
+        let intermediate = config.intermediate_size;
+
+        Ok(Self {
+            layernorm_before_weight: Array::ones::<f32>(&[hidden])?,
+            layernorm_before_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_query_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_query_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_key_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_key_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_value_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_value_bias: Array::zeros::<f32>(&[hidden])?,
+            attention_output_dense_weight: crate::random::normal_with_params::<f32>(&[hidden, hidden], 0.0, 0.02, None)?,
+            attention_output_dense_bias: Array::zeros::<f32>(&[hidden])?,
+            layernorm_after_weight: Array::ones::<f32>(&[hidden])?,
+            layernorm_after_bias: Array::zeros::<f32>(&[hidden])?,
+            mlp_fc1_weight: crate::random::normal_with_params::<f32>(&[hidden, intermediate], 0.0, 0.02, None)?,
+            mlp_fc1_bias: Array::zeros::<f32>(&[intermediate])?,
+            mlp_fc2_weight: crate::random::normal_with_params::<f32>(&[intermediate, hidden], 0.0, 0.02, None)?,
+            mlp_fc2_bias: Array::zeros::<f32>(&[hidden])?,
+        })
+    }
+}
+
+/// Full ViT model weights.
+#[derive(Debug)]
+pub struct ViTWeights {
+    // Patch embedding (conv projection)
+    pub patch_embedding_weight: Array,
+    pub patch_embedding_bias: Array,
+    // CLS token
+    pub cls_token: Array,
+    // Position embeddings
+    pub position_embeddings: Array,
+    // Transformer layers
+    pub layers: Vec<ViTLayerWeights>,
+    // Final layer norm
+    pub layernorm_weight: Array,
+    pub layernorm_bias: Array,
+    // Classification head
+    pub classifier_weight: Array,
+    pub classifier_bias: Array,
+}
+
+impl ViTWeights {
+    /// Initialize random weights for testing.
+    pub fn random(config: &ViTConfig) -> Result<Self> {
+        let hidden = config.hidden_size;
+        let num_patches = config.num_patches();
+        let num_classes = config.num_classes;
+        let patch_size = config.patch_size;
+        let num_channels = config.num_channels;
+
+        let mut layers = Vec::with_capacity(config.num_hidden_layers as usize);
+        for _ in 0..config.num_hidden_layers {
+            layers.push(ViTLayerWeights::random(config)?);
+        }
+
+        Ok(Self {
+            // Conv weight shape for MLX (NHWC): (out_channels, kernel_h, kernel_w, in_channels)
+            patch_embedding_weight: crate::random::normal_with_params::<f32>(
+                &[hidden, patch_size, patch_size, num_channels], 0.0, 0.02, None
+            )?,
+            patch_embedding_bias: Array::zeros::<f32>(&[hidden])?,
+            cls_token: crate::random::normal_with_params::<f32>(&[1, 1, hidden], 0.0, 0.02, None)?,
+            // Position embeddings for CLS + patches
+            position_embeddings: crate::random::normal_with_params::<f32>(
+                &[1, num_patches + 1, hidden], 0.0, 0.02, None
+            )?,
+            layers,
+            layernorm_weight: Array::ones::<f32>(&[hidden])?,
+            layernorm_bias: Array::zeros::<f32>(&[hidden])?,
+            classifier_weight: crate::random::normal_with_params::<f32>(&[hidden, num_classes], 0.0, 0.02, None)?,
+            classifier_bias: Array::zeros::<f32>(&[num_classes])?,
+        })
+    }
+}
+
+/// Vision Transformer Model
+///
+/// Complete ViT model implementation for image classification.
+///
+/// Note: MLX uses channels-last (NHWC) format for images.
+///
+/// # Example
+/// ```ignore
+/// use mlx_rs::nn::{ViTConfig, ViTModel, ViTWeights};
+///
+/// let config = ViTConfig::vit_base_patch16_224();
+/// let weights = ViTWeights::random(&config)?;
+/// let model = ViTModel::new(config);
+///
+/// // Input: (batch, height, width, channels) - NHWC format
+/// let images = Array::zeros::<f32>(&[1, 224, 224, 3])?;
+/// let logits = model.forward(&images, &weights)?;
+/// ```
+pub struct ViTModel {
+    pub config: ViTConfig,
+}
+
+impl ViTModel {
+    /// Create a new ViT model.
+    pub fn new(config: ViTConfig) -> Self {
+        Self { config }
+    }
+
+    /// Forward pass for classification.
+    ///
+    /// # Arguments
+    /// * `pixel_values` - Input images of shape (batch, height, width, channels) - NHWC format
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// Classification logits of shape (batch, num_classes)
+    pub fn forward(&self, pixel_values: &Array, weights: &ViTWeights) -> Result<Array> {
+        let shape = pixel_values.shape();
+        if shape.len() != 4 {
+            return Err(Error::InvalidShape("Expected 4D input (batch, height, width, channels)".into()));
+        }
+
+        // Patch embedding
+        let patch_embeddings = vit_patch_embedding(
+            pixel_values,
+            &weights.patch_embedding_weight,
+            &weights.patch_embedding_bias,
+            &self.config,
+        )?;
+
+        // Add CLS token and position embeddings
+        let hidden_states = vit_embeddings(
+            &patch_embeddings,
+            &weights.cls_token,
+            &weights.position_embeddings,
+        )?;
+
+        // Apply transformer layers
+        let mut hidden_states = hidden_states;
+        for layer_weights in &weights.layers {
+            hidden_states = vit_layer(&hidden_states, layer_weights, &self.config)?;
+        }
+
+        // Final layer norm
+        let hidden_states = layer_norm(
+            &hidden_states,
+            &weights.layernorm_weight,
+            &weights.layernorm_bias,
+            self.config.layer_norm_eps,
+        )?;
+
+        // Extract CLS token (first token)
+        let cls_output = self.get_cls_token(&hidden_states)?;
+
+        // Classification head
+        let logits = cls_output.matmul(&weights.classifier_weight)?;
+        Ok(&logits + &weights.classifier_bias)
+    }
+
+    /// Get the CLS token output (first token).
+    fn get_cls_token(&self, hidden_states: &Array) -> Result<Array> {
+        let shape = hidden_states.shape();
+        let batch_size = shape[0] as i32;
+        let hidden_size = shape[2] as i32;
+
+        // Slice to get first token: hidden_states[:, 0, :]
+        let cls_token = hidden_states.slice(&[0, 0, 0], &[batch_size, 1, hidden_size], None)?;
+        cls_token.reshape(&[batch_size, hidden_size])
+    }
+
+    /// Get features (last hidden state) without classification head.
+    ///
+    /// # Arguments
+    /// * `pixel_values` - Input images of shape (batch, height, width, channels) - NHWC format
+    /// * `weights` - Model weights
+    ///
+    /// # Returns
+    /// (cls_output, sequence_output)
+    /// - cls_output: (batch, hidden_size) - CLS token representation
+    /// - sequence_output: (batch, num_patches+1, hidden_size) - All token representations
+    pub fn get_features(
+        &self,
+        pixel_values: &Array,
+        weights: &ViTWeights,
+    ) -> Result<(Array, Array)> {
+        let shape = pixel_values.shape();
+        if shape.len() != 4 {
+            return Err(Error::InvalidShape("Expected 4D input (batch, height, width, channels)".into()));
+        }
+
+        // Patch embedding
+        let patch_embeddings = vit_patch_embedding(
+            pixel_values,
+            &weights.patch_embedding_weight,
+            &weights.patch_embedding_bias,
+            &self.config,
+        )?;
+
+        // Add CLS token and position embeddings
+        let hidden_states = vit_embeddings(
+            &patch_embeddings,
+            &weights.cls_token,
+            &weights.position_embeddings,
+        )?;
+
+        // Apply transformer layers
+        let mut hidden_states = hidden_states;
+        for layer_weights in &weights.layers {
+            hidden_states = vit_layer(&hidden_states, layer_weights, &self.config)?;
+        }
+
+        // Final layer norm
+        let hidden_states = layer_norm(
+            &hidden_states,
+            &weights.layernorm_weight,
+            &weights.layernorm_bias,
+            self.config.layer_norm_eps,
+        )?;
+
+        // Extract CLS token
+        let cls_output = self.get_cls_token(&hidden_states)?;
+
+        Ok((cls_output, hidden_states))
+    }
+
+    /// Get patch embeddings (before transformer layers).
+    ///
+    /// Useful for feature extraction or visualization.
+    pub fn get_patch_embeddings(
+        &self,
+        pixel_values: &Array,
+        weights: &ViTWeights,
+    ) -> Result<Array> {
+        vit_patch_embedding(
+            pixel_values,
+            &weights.patch_embedding_weight,
+            &weights.patch_embedding_bias,
+            &self.config,
+        )
+    }
+}

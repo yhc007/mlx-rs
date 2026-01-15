@@ -10,6 +10,7 @@ Rust bindings for [Apple MLX](https://github.com/ml-explore/mlx), a machine lear
 - **Optimizers**: SGD, Adam, AdamW, RMSprop with full configuration options
 - **Llama Model**: Complete implementation with GQA support for Llama 2/3 architectures
 - **BERT Model**: Encoder-only transformer for embeddings, classification, NLU tasks
+- **Vision Transformer (ViT)**: Image classification with patch-based attention
 - **Serialization**: Load/save safetensors (HuggingFace), npy/npz (NumPy) formats
 - **Learning Rate Schedulers**: StepLR, CosineAnnealing, WarmupCosine, OneCycleLR, and more
 - **Linear Algebra**: Matrix operations, decompositions, and solvers
@@ -202,6 +203,34 @@ let cls_embedding = model.get_pooled_output(&input_ids, None, None, &weights).un
 let mean_embedding = model.get_mean_pooled(&input_ids, None, None, &weights).unwrap();
 ```
 
+### Vision Transformer (ViT)
+
+```rust
+use mlx_rs::nn::{ViTConfig, ViTModel, ViTWeights};
+
+// Use preset configuration
+let config = ViTConfig::vit_base_patch16_224();
+
+// Or customize
+let config = ViTConfig::new()
+    .image_size(224)
+    .patch_size(16)
+    .hidden_size(768)
+    .num_hidden_layers(12)
+    .num_attention_heads(12)
+    .num_classes(1000);
+
+// Create model
+let model = ViTModel::new(config);
+
+// Forward pass - images in NHWC format (batch, height, width, channels)
+let images = Array::zeros::<f32>(&[1, 224, 224, 3]).unwrap();
+let logits = model.forward(&images, &weights).unwrap();
+
+// Feature extraction (without classification head)
+let (hidden_states, cls_token) = model.get_features(&images, &weights).unwrap();
+```
+
 ### Serialization
 
 ```rust
@@ -303,6 +332,7 @@ cargo run --example autodiff        # Gradients, VJP, JVP
 cargo run --example optimizer       # SGD, Adam, AdamW, RMSprop
 cargo run --example llama           # Llama model architecture
 cargo run --example bert            # BERT model for embeddings
+cargo run --example vit             # Vision Transformer for images
 cargo run --example serialization   # Load/save safetensors, npy, npz
 cargo run --example scheduler       # Learning rate schedulers
 ```
