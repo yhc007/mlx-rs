@@ -2560,4 +2560,520 @@ mod tests {
 
         assert_eq!(transposed.shape(), vec![2, 2, 3]);
     }
+
+    // ============================================================================
+    // Comprehensive Array Operation Tests
+    // ============================================================================
+
+    #[test]
+    fn test_array_division() {
+        let a = Array::from_slice(&[10.0f32, 20.0, 30.0, 40.0], &[4]).unwrap();
+        let b = Array::from_slice(&[2.0f32, 4.0, 5.0, 8.0], &[4]).unwrap();
+
+        let result = &a / &b;
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![5.0, 5.0, 6.0, 5.0]);
+    }
+
+    #[test]
+    fn test_array_negation() {
+        let a = Array::from_slice(&[1.0f32, -2.0, 3.0, -4.0], &[4]).unwrap();
+        let result = -&a;
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![-1.0, 2.0, -3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_array_scalar_broadcast() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0], &[3]).unwrap();
+        let scalar = Array::from_float(10.0);
+
+        // Array + scalar
+        let result = &a + &scalar;
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![11.0, 12.0, 13.0]);
+
+        // Array * scalar
+        let result = &a * &scalar;
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![10.0, 20.0, 30.0]);
+    }
+
+    #[test]
+    fn test_array_broadcast_2d() {
+        // (2, 3) + (1, 3) broadcasting
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let b = Array::from_slice(&[10.0f32, 20.0, 30.0], &[1, 3]).unwrap();
+
+        let result = &a + &b;
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![11.0, 22.0, 33.0, 14.0, 25.0, 36.0]);
+    }
+
+    #[test]
+    fn test_array_power() {
+        // Test x^2 using x * x
+        let a = Array::from_slice(&[2.0f32, 3.0, 4.0], &[3]).unwrap();
+
+        let result = &a * &a;
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![4.0, 9.0, 16.0]);
+    }
+
+    #[test]
+    fn test_array_abs() {
+        let a = Array::from_slice(&[-3.0f32, -2.0, -1.0, 0.0, 1.0, 2.0], &[6]).unwrap();
+        let result = a.abs().unwrap();
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![3.0, 2.0, 1.0, 0.0, 1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_array_sqrt() {
+        let a = Array::from_slice(&[1.0f32, 4.0, 9.0, 16.0], &[4]).unwrap();
+        let result = a.sqrt().unwrap();
+        result.eval();
+        assert_eq!(result.to_vec::<f32>().unwrap(), vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_array_exp_log() {
+        let a = Array::from_slice(&[0.0f32, 1.0, 2.0], &[3]).unwrap();
+
+        // exp
+        let exp_result = a.exp().unwrap();
+        exp_result.eval();
+        let exp_vals = exp_result.to_vec::<f32>().unwrap();
+        assert!((exp_vals[0] - 1.0).abs() < 1e-5);
+        assert!((exp_vals[1] - std::f32::consts::E).abs() < 1e-5);
+
+        // log(exp(x)) should be x
+        let log_result = exp_result.log().unwrap();
+        log_result.eval();
+        let log_vals = log_result.to_vec::<f32>().unwrap();
+        assert!((log_vals[0] - 0.0).abs() < 1e-5);
+        assert!((log_vals[1] - 1.0).abs() < 1e-5);
+        assert!((log_vals[2] - 2.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_array_sin_cos() {
+        let a = Array::from_slice(&[0.0f32, std::f32::consts::PI / 2.0, std::f32::consts::PI], &[3]).unwrap();
+
+        let sin_result = a.sin().unwrap();
+        sin_result.eval();
+        let sin_vals = sin_result.to_vec::<f32>().unwrap();
+        assert!((sin_vals[0] - 0.0).abs() < 1e-5);  // sin(0) = 0
+        assert!((sin_vals[1] - 1.0).abs() < 1e-5);  // sin(pi/2) = 1
+        assert!(sin_vals[2].abs() < 1e-5);          // sin(pi) ≈ 0
+
+        let cos_result = a.cos().unwrap();
+        cos_result.eval();
+        let cos_vals = cos_result.to_vec::<f32>().unwrap();
+        assert!((cos_vals[0] - 1.0).abs() < 1e-5);  // cos(0) = 1
+        assert!(cos_vals[1].abs() < 1e-5);          // cos(pi/2) ≈ 0
+        assert!((cos_vals[2] + 1.0).abs() < 1e-5);  // cos(pi) = -1
+    }
+
+    #[test]
+    fn test_array_max_min() {
+        let a = Array::from_slice(&[3.0f32, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0], &[8]).unwrap();
+
+        let max_result = a.max_all(false).unwrap();
+        max_result.eval();
+        assert_eq!(max_result.to_vec::<f32>().unwrap(), vec![9.0]);
+
+        let min_result = a.min_all(false).unwrap();
+        min_result.eval();
+        assert_eq!(min_result.to_vec::<f32>().unwrap(), vec![1.0]);
+    }
+
+    #[test]
+    fn test_array_sum_axis() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Sum along axis 0
+        let sum0 = a.sum_axes(&[0], false).unwrap();
+        sum0.eval();
+        assert_eq!(sum0.to_vec::<f32>().unwrap(), vec![5.0, 7.0, 9.0]);
+
+        // Sum along axis 1
+        let sum1 = a.sum_axes(&[1], false).unwrap();
+        sum1.eval();
+        assert_eq!(sum1.to_vec::<f32>().unwrap(), vec![6.0, 15.0]);
+    }
+
+    #[test]
+    fn test_array_mean_all() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Mean of all elements: (1+2+3+4+5+6)/6 = 3.5
+        let mean = a.mean_all(false).unwrap();
+        mean.eval();
+        assert_eq!(mean.to_vec::<f32>().unwrap(), vec![3.5]);
+    }
+
+    #[test]
+    fn test_array_keepdims() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Sum with keepdims=true
+        let sum_keep = a.sum_axes(&[1], true).unwrap();
+        sum_keep.eval();
+        assert_eq!(sum_keep.shape(), vec![2, 1]);
+        assert_eq!(sum_keep.to_vec::<f32>().unwrap(), vec![6.0, 15.0]);
+    }
+
+    #[test]
+    fn test_array_squeeze() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0], &[1, 3, 1]).unwrap();
+        let squeezed = a.squeeze().unwrap();
+        squeezed.eval();
+        assert_eq!(squeezed.shape(), vec![3]);
+    }
+
+    #[test]
+    fn test_array_expand_dims() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0], &[3]).unwrap();
+
+        let expanded0 = a.expand_dims(0).unwrap();
+        expanded0.eval();
+        assert_eq!(expanded0.shape(), vec![1, 3]);
+
+        let expanded1 = a.expand_dims(1).unwrap();
+        expanded1.eval();
+        assert_eq!(expanded1.shape(), vec![3, 1]);
+    }
+
+    #[test]
+    fn test_array_flatten() {
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let flat = a.flatten().unwrap();
+        flat.eval();
+        assert_eq!(flat.shape(), vec![6]);
+        assert_eq!(flat.to_vec::<f32>().unwrap(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_array_arange() {
+        let a = Array::arange::<f32>(0.0, 5.0, 1.0).unwrap();
+        a.eval();
+        assert_eq!(a.to_vec::<f32>().unwrap(), vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+
+        let b = Array::arange::<f32>(0.0, 1.0, 0.25).unwrap();
+        b.eval();
+        assert_eq!(b.to_vec::<f32>().unwrap(), vec![0.0, 0.25, 0.5, 0.75]);
+    }
+
+    #[test]
+    fn test_array_linspace() {
+        let a = Array::linspace::<f32>(0.0, 1.0, 5).unwrap();
+        a.eval();
+        let vals = a.to_vec::<f32>().unwrap();
+        assert_eq!(vals.len(), 5);
+        assert!((vals[0] - 0.0).abs() < 1e-5);
+        assert!((vals[2] - 0.5).abs() < 1e-5);
+        assert!((vals[4] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_array_eye() {
+        let eye = Array::eye::<f32>(3, None, 0).unwrap();
+        eye.eval();
+        let vals = eye.to_vec::<f32>().unwrap();
+        assert_eq!(vals, vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn test_array_int_types() {
+        // Test i32
+        let a = Array::from_slice(&[1i32, 2, 3, 4], &[4]).unwrap();
+        a.eval();
+        assert_eq!(a.to_vec::<i32>().unwrap(), vec![1, 2, 3, 4]);
+
+        // Test i64
+        let b = Array::from_slice(&[100i64, 200, 300], &[3]).unwrap();
+        b.eval();
+        assert_eq!(b.to_vec::<i64>().unwrap(), vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn test_array_bool() {
+        let a = Array::from_slice(&[true, false, true, false], &[4]).unwrap();
+        a.eval();
+        assert_eq!(a.to_vec::<bool>().unwrap(), vec![true, false, true, false]);
+    }
+
+    #[test]
+    fn test_matmul_batch() {
+        // Batch matrix multiplication (2, 2, 2) @ (2, 2, 2)
+        let a = Array::from_slice(&[
+            1.0f32, 2.0, 3.0, 4.0,  // First matrix
+            5.0, 6.0, 7.0, 8.0,     // Second matrix
+        ], &[2, 2, 2]).unwrap();
+
+        let b = Array::from_slice(&[
+            1.0f32, 0.0, 0.0, 1.0,  // Identity for first
+            2.0, 0.0, 0.0, 2.0,     // 2*Identity for second
+        ], &[2, 2, 2]).unwrap();
+
+        let c = a.matmul(&b).unwrap();
+        c.eval();
+        assert_eq!(c.shape(), vec![2, 2, 2]);
+
+        let vals = c.to_vec::<f32>().unwrap();
+        // First batch: [[1,2],[3,4]] @ I = [[1,2],[3,4]]
+        assert_eq!(vals[0], 1.0);
+        assert_eq!(vals[1], 2.0);
+        // Second batch: [[5,6],[7,8]] @ 2I = [[10,12],[14,16]]
+        assert_eq!(vals[4], 10.0);
+        assert_eq!(vals[5], 12.0);
+    }
+
+    #[test]
+    fn test_array_contiguous() {
+        // Test that transposed arrays work correctly
+        let a = Array::from_slice(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let t = a.transpose().unwrap();
+        t.eval();
+
+        // Should be able to read values after transpose
+        let vals = t.to_vec::<f32>().unwrap();
+        assert_eq!(vals.len(), 6);
+    }
+
+    // ============================================================================
+    // GPU Tests (Apple Silicon)
+    // ============================================================================
+
+    #[test]
+    fn test_gpu_device_available() {
+        use device::Device;
+
+        // Check that GPU device can be created on Apple Silicon
+        let gpu = Device::gpu();
+        let cpu = Device::cpu();
+
+        // Default device should be available
+        let default = Device::default_device();
+        assert!(default.is_gpu() || default.is_cpu());
+    }
+
+    #[test]
+    fn test_gpu_array_creation() {
+        use device::Device;
+        use stream::Stream;
+
+        // Create array on GPU
+        let gpu = Device::gpu();
+        let stream = Stream::new(&gpu);
+
+        let a = Array::zeros::<f32>(&[1000, 1000]).unwrap();
+        a.eval();
+
+        // Verify shape
+        assert_eq!(a.shape(), vec![1000, 1000]);
+        assert_eq!(a.size(), 1_000_000);
+    }
+
+    #[test]
+    fn test_gpu_matmul_performance() {
+        // Test larger matrix multiplication on GPU
+        let n = 256;
+
+        let a = Array::ones::<f32>(&[n, n]).unwrap();
+        let b = Array::ones::<f32>(&[n, n]).unwrap();
+
+        let c = a.matmul(&b).unwrap();
+        c.eval();
+
+        // Result should be n * 1.0 = n for all elements
+        let vals = c.to_vec::<f32>().unwrap();
+        assert_eq!(vals.len(), (n * n) as usize);
+        assert!((vals[0] - n as f32).abs() < 1e-3);
+        assert!((vals[(n * n - 1) as usize] - n as f32).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_gpu_elementwise_ops() {
+        // Test various elementwise operations on larger arrays
+        let n = 10000;
+
+        let a = Array::ones::<f32>(&[n]).unwrap();
+        let b = Array::ones::<f32>(&[n]).unwrap();
+
+        // Addition
+        let c = &a + &b;
+        c.eval();
+        let vals = c.to_vec::<f32>().unwrap();
+        assert!(vals.iter().all(|&x| (x - 2.0).abs() < 1e-6));
+
+        // Multiplication
+        let d = &a * &b;
+        d.eval();
+        let vals = d.to_vec::<f32>().unwrap();
+        assert!(vals.iter().all(|&x| (x - 1.0).abs() < 1e-6));
+    }
+
+    #[test]
+    fn test_gpu_reduction_large() {
+        // Test reduction on larger array
+        let n = 100000;
+
+        let a = Array::ones::<f32>(&[n]).unwrap();
+        let sum = a.sum_all(false).unwrap();
+        sum.eval();
+
+        let val = sum.to_vec::<f32>().unwrap()[0];
+        assert!((val - n as f32).abs() < 1.0);  // Allow small floating point error
+    }
+
+    #[test]
+    fn test_gpu_neural_network_forward() {
+        // Simulate a small neural network forward pass on GPU
+        let batch = 32;
+        let in_features = 128;
+        let hidden = 256;
+        let out_features = 10;
+
+        // Input
+        let x = random::normal_with_params::<f32>(&[batch, in_features], 0.0, 1.0, None).unwrap();
+
+        // Layer 1: Linear + ReLU
+        let w1 = random::normal_with_params::<f32>(&[in_features, hidden], 0.0, 0.01, None).unwrap();
+        let h1 = x.matmul(&w1).unwrap();
+        let h1_relu = nn::relu(&h1).unwrap();
+
+        // Layer 2: Linear + Softmax
+        let w2 = random::normal_with_params::<f32>(&[hidden, out_features], 0.0, 0.01, None).unwrap();
+        let out = h1_relu.matmul(&w2).unwrap();
+        let probs = nn::softmax(&out, -1).unwrap();
+
+        probs.eval();
+
+        // Check output shape
+        assert_eq!(probs.shape(), vec![batch, out_features]);
+
+        // Check probabilities sum to 1
+        let prob_sum = probs.sum_axes(&[1], false).unwrap();
+        prob_sum.eval();
+        let sums = prob_sum.to_vec::<f32>().unwrap();
+        for s in sums {
+            assert!((s - 1.0).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn test_gpu_conv2d_forward() {
+        // Test conv2d on GPU
+        let batch = 4;
+        let in_channels = 3;
+        let out_channels = 16;
+        let h = 32;
+        let w = 32;
+        let kernel = 3;
+
+        // Input: (N, H, W, C) - MLX uses channels-last
+        let input = random::normal_with_params::<f32>(
+            &[batch, h, w, in_channels], 0.0, 1.0, None
+        ).unwrap();
+
+        // Weight: (C_out, kH, kW, C_in)
+        let weight = random::normal_with_params::<f32>(
+            &[out_channels, kernel, kernel, in_channels], 0.0, 0.01, None
+        ).unwrap();
+
+        let output = nn::conv2d(&input, &weight, (1, 1), (1, 1), (1, 1), 1).unwrap();
+        output.eval();
+
+        // Output shape: (N, H_out, W_out, C_out)
+        // With padding=1 and stride=1, H_out = H, W_out = W
+        assert_eq!(output.shape(), vec![batch, h, w, out_channels]);
+    }
+
+    #[test]
+    fn test_gpu_attention_forward() {
+        // Test attention mechanism on GPU
+        let batch = 2;
+        let seq_len = 64;
+        let embed_dim = 128;
+        let num_heads = 8;
+
+        let query = random::normal_with_params::<f32>(
+            &[batch, seq_len, embed_dim], 0.0, 0.1, None
+        ).unwrap();
+        let key = random::normal_with_params::<f32>(
+            &[batch, seq_len, embed_dim], 0.0, 0.1, None
+        ).unwrap();
+        let value = random::normal_with_params::<f32>(
+            &[batch, seq_len, embed_dim], 0.0, 0.1, None
+        ).unwrap();
+
+        let output = nn::multi_head_attention_simple(
+            &query, &key, &value,
+            num_heads,
+            nn::AttentionMask::None,
+            None,
+        ).unwrap();
+
+        output.eval();
+        assert_eq!(output.shape(), vec![batch, seq_len, embed_dim]);
+    }
+
+    #[test]
+    fn test_gpu_stream_synchronize() {
+        use stream::Stream;
+        use device::Device;
+
+        let gpu = Device::gpu();
+        let stream = Stream::new(&gpu);
+
+        // Create and evaluate array
+        let a = Array::ones::<f32>(&[1000, 1000]).unwrap();
+        let b = Array::ones::<f32>(&[1000, 1000]).unwrap();
+        let c = a.matmul(&b).unwrap();
+        c.eval();
+
+        // Synchronize stream
+        stream.synchronize();
+
+        // Should be able to read results after sync
+        let shape = c.shape();
+        assert_eq!(shape, vec![1000, 1000]);
+    }
+
+    #[test]
+    fn test_gpu_memory_large_array() {
+        // Test handling of larger arrays on GPU
+        let size: i32 = 4096;
+
+        let a = Array::zeros::<f32>(&[size, size]).unwrap();
+        a.eval();
+
+        // Verify we can access the data
+        assert_eq!(a.size() as i32, size * size);
+        assert_eq!(a.nbytes() as i32, size * size * 4);  // f32 = 4 bytes
+    }
+
+    #[test]
+    fn test_gpu_chained_operations() {
+        // Test lazy evaluation with chained operations on GPU
+        let n = 1000;
+
+        let a = Array::ones::<f32>(&[n, n]).unwrap();
+        let b = Array::ones::<f32>(&[n, n]).unwrap();
+
+        // Chain multiple operations (lazy)
+        let c = &a + &b;           // 2
+        let d = &c * &c;           // 4
+        let e = d.sqrt().unwrap(); // 2
+        let f = e.sum_all(false).unwrap();
+
+        // Only evaluate at the end
+        f.eval();
+
+        let val = f.to_vec::<f32>().unwrap()[0];
+        // Should be n * n * 2.0 = 2,000,000
+        assert!((val - 2_000_000.0).abs() < 100.0);
+    }
 }
