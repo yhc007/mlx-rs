@@ -203,6 +203,18 @@ let output_ids = model.generate(&input_ids, &weights, 100, 0.8).unwrap();
 - QR decomposition, SVD
 - Eigenvalues, norms, cross product
 
+## Examples
+
+Run examples with:
+
+```bash
+cargo run --example basic_arrays    # Array creation and manipulation
+cargo run --example neural_network  # NN layers, activations, attention
+cargo run --example autodiff        # Gradients, VJP, JVP
+cargo run --example optimizer       # SGD, Adam, AdamW, RMSprop
+cargo run --example llama           # Llama model architecture
+```
+
 ## License
 
 MIT License

@@ -18,3 +18,23 @@ approx = "0.5"
 default = []
 metal = ["mlx-sys/metal"]
 cpu-only = ["mlx-sys/cpu-only"]
+
+[[example]]
+name = "basic_arrays"
+path = "examples/basic_arrays.rs"
+
+[[example]]
+name = "neural_network"
+path = "examples/neural_network.rs"
+
+[[example]]
+name = "autodiff"
+path = "examples/autodiff.rs"
+
+[[example]]
+name = "optimizer"
+path = "examples/optimizer.rs"
+
+[[example]]
+name = "llama"
+path = "examples/llama.rs"
