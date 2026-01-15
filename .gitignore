@@ -1,0 +1,42 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Build artifacts
+*.o
+*.a
+*.dylib
+*.so
+
+# Debug
+*.dSYM/
+*.pdb
+
+# Environment
+.env
+.env.local
+
+# Documentation
+/doc/
+
+# Test coverage
+*.profraw
+*.profdata
+/coverage/
+
+# Benchmarks
+/criterion/
